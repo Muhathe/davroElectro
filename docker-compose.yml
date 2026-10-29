@@ -1,0 +1,17 @@
+# Lokal ishlab chiqish uchun PostgreSQL.
+# Ishga tushirish: docker compose up -d
+services:
+  db:
+    image: postgres:16
+    container_name: davron-postgres
+    environment:
+      POSTGRES_DB: davron_elektro
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:
