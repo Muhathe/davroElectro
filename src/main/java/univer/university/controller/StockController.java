@@ -57,6 +57,19 @@ public class StockController {
         return service.movements(productId, limit);
     }
 
+    @GetMapping("/purchases")
+    @PreAuthorize("@perm.view('SKLAD')")
+    public List<PurchaseDto> purchases(@RequestParam(defaultValue = "0") int page,
+                                       @RequestParam(defaultValue = "50") int size) {
+        return service.purchases(page, size);
+    }
+
+    @GetMapping("/purchases/{id}")
+    @PreAuthorize("@perm.view('SKLAD')")
+    public PurchaseDto purchase(@PathVariable Long id) {
+        return service.purchase(id);
+    }
+
     @GetMapping("/order-suggestions")
     @PreAuthorize("@perm.view('SKLAD')")
     public List<OrderSuggestion> suggestions() {

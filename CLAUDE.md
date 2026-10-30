@@ -13,16 +13,18 @@ There is no Maven wrapper, so use a system `mvn`.
 ```bash
 docker compose up -d          # local PostgreSQL 16 (db: davron_elektro, user postgres)
 mvn compile
-mvn spring-boot:run           # http://localhost:8080, Swagger at /swagger-ui.html
-mvn test                      # no tests exist yet; H2 + spring-security-test are on the test classpath
-mvn test -Dtest=ClassName#method   # run a single test
+mvn spring-boot:run           # port = server.port (8082 at the moment), Swagger at /swagger-ui.html
+mvn test                      # integration tests on in-memory H2 (profile "test"), no PostgreSQL needed
+mvn test -Dtest=BusinessFlowTest#creditSaleAndCustomerPayment   # run a single test
 ```
 
 `application.properties` reads its config from env vars: `DB_URL`, `DB_USER`, `DB_PASSWORD`, `JWT_SECRET` (at least 32 chars), `CORS_ORIGINS`, `SEED_PASSWORD`, `AI_API_KEY` and `AI_MODEL`. If the AI key is empty, AI endpoints return 503. The defaults in `application.properties` (DB name `davro_electro`, CORS `:5173`) differ from `docker-compose.yml` and the README (`davron_elektro`, `:3000`). Check which one applies before you debug a connection or CORS problem.
 
 `spring.jpa.hibernate.ddl-auto=update` manages the schema; there are no migrations. `config/DataSeeder` seeds the role matrix, expense categories, the chart of accounts, users (`davron` EGASI, `admin`, `buxgalter`, `sardor`/`jasur` SOTUVCHI) and, when `app.seed.demo-data=true`, demo products, customers and opening cash.
 
-The README says the code was first written without Maven Central access. Small compile errors may still turn up on a first build.
+Tests extend `ApiTestSupport` (`@SpringBootTest` + MockMvc, one shared context and H2 database seeded by `DataSeeder` with password `test12345`). Tests share state, so create your own products/customers via `newProduct(...)` instead of relying on seed quantities. `EndpointSmokeTest` lists every GET endpoint; add new ones there.
+
+`ddl-auto=update` never drops a NOT NULL constraint or column. When you relax an entity constraint, also give the manual `ALTER TABLE` for existing databases (see the README).
 
 ## Architecture
 

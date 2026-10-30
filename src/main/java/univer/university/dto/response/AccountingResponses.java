@@ -13,6 +13,18 @@ public final class AccountingResponses {
     private AccountingResponses() {
     }
 
+    public record AccountDto(String code, String name, AccountType type) {
+    }
+
+    public record BalanceRow(String code, String name, BigDecimal amount) {
+    }
+
+    /** Balans: aktiv = passiv + kapital (kapitalga davrning taqsimlanmagan foydasi qo'shiladi). */
+    public record BalanceSheet(LocalDate date, List<BalanceRow> assets, BigDecimal totalAssets,
+                               List<BalanceRow> liabilities, BigDecimal totalLiabilities,
+                               List<BalanceRow> equity, BigDecimal totalEquity, boolean balanced) {
+    }
+
     public record LineDto(String accountCode, String accountName, BigDecimal debit, BigDecimal credit) {
     }
 

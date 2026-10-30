@@ -24,6 +24,12 @@ public class DebtController {
         return service.customerDebt(id);
     }
 
+    @GetMapping("/customers/{id}/payments")
+    @PreAuthorize("@perm.view('QARZLAR') or @perm.view('MIJOZLAR')")
+    public List<CustomerPaymentDto> payments(@PathVariable Long id) {
+        return service.payments(id);
+    }
+
     @PostMapping("/customers/{id}/payments")
     @ResponseStatus(HttpStatus.CREATED)
     @PreAuthorize("@perm.create('QARZLAR')")

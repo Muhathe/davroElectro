@@ -1,13 +1,16 @@
 package univer.university.security;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import univer.university.component.CurrentUserProvider;
 import univer.university.dto.request.RoleRequests.PermissionItem;
 import univer.university.dto.response.RoleResponses.PermissionRow;
 import univer.university.entity.RolePermission;
 import univer.university.entity.enums.Module;
 import univer.university.entity.enums.Role;
+import univer.university.exception.BusinessException;
 import univer.university.repository.RolePermissionRepository;
 
 import java.util.ArrayList;
@@ -23,6 +26,7 @@ public class PermissionMatrixService {
     public enum Action { VIEW, CREATE, EDIT, DELETE }
 
     private final RolePermissionRepository repository;
+    private final CurrentUserProvider currentUser;
     private final Map<String, RolePermission> cache = new ConcurrentHashMap<>();
 
     private static String key(Role r, Module m) {
@@ -60,8 +64,16 @@ public class PermissionMatrixService {
         return rows;
     }
 
+    /** Matritsani faqat EGASI va ADMIN o'zgartiradi; ADMIN o'z rolining ruxsatlarini o'zgartira olmaydi. */
     @Transactional
     public List<PermissionRow> update(List<PermissionItem> items) {
+        Role editor = currentUser.current().role();
+        if (editor != Role.EGASI && editor != Role.ADMIN) {
+            throw new BusinessException("Ruxsatlar matritsasini faqat EGASI va ADMIN o'zgartira oladi", HttpStatus.FORBIDDEN);
+        }
+        if (editor == Role.ADMIN && items.stream().anyMatch(i -> i.role() == Role.ADMIN)) {
+            throw new BusinessException("ADMIN o'z rolining ruxsatlarini o'zgartira olmaydi", HttpStatus.FORBIDDEN);
+        }
         for (PermissionItem i : items) {
             if (i.role() == Role.EGASI) {
                 continue; // EGASI ruxsatlari o'zgarmaydi

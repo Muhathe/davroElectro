@@ -67,6 +67,23 @@ public class ExpenseService {
         return toDto(c);
     }
 
+    /** Nomi doim o'zgaradi; turi esa faqat harajat yozilmagan kategoriyada (storno jurnali eski turga bog'liq). */
+    @Transactional
+    public CategoryDto updateCategory(Long id, ExpenseRequests.Category req) {
+        ExpenseCategory c = categories.findById(id).orElseThrow(() -> new NotFoundException("Kategoriya topilmadi"));
+        String name = req.name().trim();
+        categories.findByName(name).filter(x -> !x.getId().equals(id)).ifPresent(x -> {
+            throw BusinessException.conflict("Bunday kategoriya mavjud");
+        });
+        if (req.type() != c.getType() && expenses.existsByCategory_Id(id)) {
+            throw new BusinessException("Harajat yozilgan kategoriyaning turini o'zgartirib bo'lmaydi");
+        }
+        c.setName(name);
+        c.setType(req.type());
+        audit.log("UPDATE", "ExpenseCategory", c.getId(), name + " / " + c.getType());
+        return toDto(c);
+    }
+
     // ---------- harajat ----------
 
     /** Kassadan harajat kiritish: Expense + CashOperation(OUT) + AuditLog bitta tranzaksiyada. */
@@ -103,6 +120,12 @@ public class ExpenseService {
         audit.log("CANCEL", "Expense", e.getId(), "sabab: " + e.getCancelReason());
         events.publishEvent(new ExpenseCancelledEvent(e.getId(), e.getAmount(), e.getPaymentMethod(),
                 e.getCategory().getType() == ExpenseType.OWNER_DRAW, DateUtils.today()));
+        return toDto(e, nameOf(e.getUserId()));
+    }
+
+    @Transactional(readOnly = true)
+    public ExpenseDto get(Long id) {
+        Expense e = expenses.findById(id).orElseThrow(() -> new NotFoundException("Harajat topilmadi"));
         return toDto(e, nameOf(e.getUserId()));
     }
 

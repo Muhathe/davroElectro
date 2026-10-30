@@ -59,6 +59,11 @@ public class ProductService {
     }
 
     @Transactional(readOnly = true)
+    public List<String> categories() {
+        return products.categories();
+    }
+
+    @Transactional(readOnly = true)
     public ProductDto byBarcode(String code) {
         barcodes.requireValid(code);
         return products.findByBarcode(code).map(ProductService::toDto)
@@ -111,6 +116,12 @@ public class ProductService {
     @Transactional(readOnly = true)
     public List<SupplierDto> listSuppliers() {
         return suppliers.findAll(Sort.by("name")).stream().map(s -> new SupplierDto(s.getId(), s.getName(), s.getPhone())).toList();
+    }
+
+    @Transactional(readOnly = true)
+    public SupplierDto getSupplier(Long id) {
+        Supplier s = suppliers.findById(id).orElseThrow(() -> new NotFoundException("Ta'minotchi topilmadi"));
+        return new SupplierDto(s.getId(), s.getName(), s.getPhone());
     }
 
     @Transactional

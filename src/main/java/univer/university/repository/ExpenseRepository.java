@@ -12,6 +12,8 @@ import java.time.LocalDateTime;
 
 public interface ExpenseRepository extends JpaRepository<Expense, Long>, JpaSpecificationExecutor<Expense> {
 
+    boolean existsByCategory_Id(Long categoryId);
+
     @Query("select coalesce(sum(e.amount), 0) from Expense e "
             + "where e.status = univer.university.entity.enums.ExpenseStatus.ACTIVE "
             + "and e.createdAt >= :fromDt and e.createdAt < :toDt")
