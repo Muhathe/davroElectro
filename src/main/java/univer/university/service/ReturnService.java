@@ -1,8 +1,16 @@
 package univer.university.service;
 
+import jakarta.persistence.criteria.CommonAbstractCriteria;
+import jakarta.persistence.criteria.CriteriaBuilder;
+import jakarta.persistence.criteria.Predicate;
+import jakarta.persistence.criteria.Root;
+import jakarta.persistence.criteria.Subquery;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import univer.university.component.CurrentUserProvider;
@@ -20,6 +28,7 @@ import univer.university.repository.*;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -32,6 +41,7 @@ public class ReturnService {
     private final SaleReturnItemRepository returnItems;
     private final ProductRepository products;
     private final CustomerRepository customers;
+    private final UserRepository users;
     private final StockMovementRepository movements;
     private final CashService cash;
     private final AuditService audit;
@@ -45,7 +55,102 @@ public class ReturnService {
         String customerName = s.getCustomerId() == null ? null
                 : customers.findById(s.getCustomerId()).map(Customer::getName).orElse(null);
         return new SaleForReturn(s.getId(), s.getCheckNo(), s.getCreatedAt(), s.getPaymentType(), customerName,
-                s.getTotal(), lines(s));
+                s.getTotal(), lines(s), userName(s.getUserId()));
+    }
+
+    /** Vozvrat uchun chek qidirish: chek raqami (qismi), sotuvchi, tovar (id, nomi yoki barcode), sana. */
+    @Transactional(readOnly = true)
+    public SaleSearch searchSales(String checkNo, Long sellerId, Long productId, String product, LocalDate from, LocalDate to,
+                                  int page, int size) {
+        Specification<Sale> spec = (root, q, cb) -> {
+            List<Predicate> p = new ArrayList<>();
+            if (checkNo != null && !checkNo.isBlank()) {
+                p.add(cb.like(cb.upper(root.get("checkNo")), "%" + checkNo.trim().toUpperCase(Locale.ROOT) + "%"));
+            }
+            if (sellerId != null) {
+                p.add(cb.equal(root.get("userId"), sellerId));
+            }
+            addPeriod(p, root, cb, from, to);
+            if (hasProductFilter(productId, product)) {
+                p.add(productExists(q, cb, SaleItem.class, "sale", root, productId, product));
+            }
+            return cb.and(p.toArray(new Predicate[0]));
+        };
+        int sz = Math.max(1, Math.min(size, 200));
+        Page<Sale> res = sales.findAll(spec, PageRequest.of(Math.max(0, page), sz, Sort.by(Sort.Direction.DESC, "createdAt", "id")));
+        return new SaleSearch(res.getContent().stream().map(s -> findSale(s.getCheckNo())).toList(), res.getTotalElements(),
+                res.getNumber(), sz);
+    }
+
+    /** Vozvratlar tarixi: chek raqami, vozvratni qilgan xodim, tovar, sana. */
+    @Transactional(readOnly = true)
+    public ReturnSearch searchReturns(String checkNo, Long sellerId, Long productId, String product, LocalDate from, LocalDate to,
+                                      int page, int size) {
+        Specification<SaleReturn> spec = (root, q, cb) -> {
+            List<Predicate> p = new ArrayList<>();
+            if (checkNo != null && !checkNo.isBlank()) {
+                Subquery<Long> sq = q.subquery(Long.class);
+                Root<Sale> s = sq.from(Sale.class);
+                sq.select(s.<Long>get("id")).where(cb.equal(s.get("id"), root.get("saleId")),
+                        cb.like(cb.upper(s.get("checkNo")), "%" + checkNo.trim().toUpperCase(Locale.ROOT) + "%"));
+                p.add(cb.exists(sq));
+            }
+            if (sellerId != null) {
+                p.add(cb.equal(root.get("userId"), sellerId));
+            }
+            addPeriod(p, root, cb, from, to);
+            if (hasProductFilter(productId, product)) {
+                p.add(productExists(q, cb, SaleReturnItem.class, "saleReturn", root, productId, product));
+            }
+            return cb.and(p.toArray(new Predicate[0]));
+        };
+        BigDecimal total = returns.findAll(spec).stream().map(SaleReturn::getTotal).reduce(BigDecimal.ZERO, BigDecimal::add);
+        int sz = Math.max(1, Math.min(size, 200));
+        Page<SaleReturn> res = returns.findAll(spec, PageRequest.of(Math.max(0, page), sz, Sort.by(Sort.Direction.DESC, "createdAt", "id")));
+        return new ReturnSearch(res.getContent().stream()
+                .map(r -> toDto(r, sales.findById(r.getSaleId()).map(Sale::getCheckNo).orElse("?"))).toList(),
+                res.getTotalElements(), MoneyUtils.round(total), res.getNumber(), sz);
+    }
+
+    /** Qidiruv filtri uchun xodimlar ro'yxati (XODIMLAR ruxsatisiz ham ko'rinadi). */
+    @Transactional(readOnly = true)
+    public List<SellerOption> sellers() {
+        return users.findAll(Sort.by("fullName")).stream().filter(User::isActive)
+                .map(u -> new SellerOption(u.getId(), u.getFullName())).toList();
+    }
+
+    private static void addPeriod(List<Predicate> p, Root<?> root, CriteriaBuilder cb, LocalDate from, LocalDate to) {
+        if (from != null) {
+            p.add(cb.greaterThanOrEqualTo(root.get("createdAt"), DateUtils.startOfDay(from)));
+        }
+        if (to != null) {
+            p.add(cb.lessThan(root.get("createdAt"), DateUtils.startOfDay(to.plusDays(1))));
+        }
+    }
+
+    private static boolean hasProductFilter(Long productId, String product) {
+        return productId != null || (product != null && !product.isBlank());
+    }
+
+    /** Hujjat qatorlari orasida filtrga mos tovar bormi. */
+    private static <T> Predicate productExists(CommonAbstractCriteria q, CriteriaBuilder cb, Class<T> itemClass, String parent,
+                                               Root<?> root, Long productId, String product) {
+        Subquery<Long> sq = q.subquery(Long.class);
+        Root<T> item = sq.from(itemClass);
+        Root<Product> pr = sq.from(Product.class);
+        List<Predicate> w = new ArrayList<>(List.of(cb.equal(item.get(parent), root), cb.equal(item.get("productId"), pr.get("id"))));
+        if (productId != null) {
+            w.add(cb.equal(pr.get("id"), productId));
+        }
+        if (product != null && !product.isBlank()) {
+            String like = "%" + product.trim().toLowerCase(Locale.ROOT) + "%";
+            w.add(cb.or(cb.like(cb.lower(pr.get("name")), like), cb.like(pr.get("barcode"), like)));
+        }
+        return cb.exists(sq.select(item.<Long>get("id")).where(w.toArray(new Predicate[0])));
+    }
+
+    private String userName(Long id) {
+        return users.findById(id).map(User::getFullName).orElse(null);
     }
 
     @Transactional
@@ -99,7 +204,8 @@ public class ReturnService {
         }
         PayMethod method = null;
         if (!toDebt) {
-            method = PayMethod.fromPayment(sale.getPaymentType());
+            // aralash chekda vozvrat faqat naqddan
+            method = sale.getPaymentType() == PaymentType.ARALASH ? PayMethod.NAQD : PayMethod.fromPayment(sale.getPaymentType());
             cash.record(CashDirection.OUT, total, method, CashSource.RETURN, saved.getId(), "Vozvrat " + sale.getCheckNo());
         }
         audit.log("CREATE", "SaleReturn", saved.getId(), "chek=" + sale.getCheckNo() + ", summa=" + total + ", sabab=" + req.reason());
@@ -149,6 +255,6 @@ public class ReturnService {
         List<ReturnableLine> items = r.getItems().stream().map(i -> new ReturnableLine(i.getProductId(),
                 names.get(i.getProductId()), i.getQty(), i.getQty(), BigDecimal.ZERO, i.getPrice())).toList();
         return new ReturnDto(r.getId(), r.getSaleId(), checkNo, r.getReason(), r.getTotal(), r.isToDebt(), r.getCreatedAt(), items,
-                FiscalService.toInfo(r.getFiscal()));
+                FiscalService.toInfo(r.getFiscal()), r.getUserId(), userName(r.getUserId()));
     }
 }

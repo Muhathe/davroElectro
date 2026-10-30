@@ -34,7 +34,8 @@ import java.util.Locale;
  * MXIK, qadoq kodi, QQS % (oxirgi uchtasi ixtiyoriy).
  * To'g'ri qatorlar saqlanadi, xatolilari ro'yxat bilan qaytariladi.
  * Yangi tovarda miqdor &gt; 0 bo'lsa — boshlang'ich qoldiq (OPENING) sifatida yoziladi (egasi kapitali hisobiga).
- * Mavjud tovarda faqat nomi/kategoriya/birlik/narx/minQty/ta'minotchi yangilanadi (qoldiq va tannarx o'zgarmaydi).
+ * Mavjud tovarda faqat nomi/kategoriya/birlik/narx/minQty/ta'minotchi yangilanadi (qoldiq va tannarx o'zgarmaydi);
+ * bo'sh qoldirilgan ixtiyoriy katak mavjud qiymatni o'chirmaydi, farqli miqdor ogohlantirish bilan qaytariladi.
  */
 @Service
 @RequiredArgsConstructor
@@ -58,13 +59,14 @@ public class ProductImportService {
 
     @Transactional
     public ImportResult importFile(MultipartFile file) {
-        List<ExcelRow> rows = excel.read(file);
+        List<ExcelRow> rows = excel.read(file, "barcode", "nomi", "narx");
         List<RowError> errors = new ArrayList<>();
+        List<RowError> warnings = new ArrayList<>();
         int ok = 0;
         BigDecimal openingValue = BigDecimal.ZERO;
         for (ExcelRow r : rows) {
             try {
-                openingValue = openingValue.add(importRow(r));
+                openingValue = openingValue.add(importRow(r, warnings));
                 ok++;
             } catch (RuntimeException e) {
                 errors.add(new RowError(r.number(), e.getMessage()));
@@ -74,25 +76,23 @@ public class ProductImportService {
             events.publishEvent(new OpeningBalanceEvent(BigDecimal.ZERO, MoneyUtils.round(openingValue), DateUtils.today()));
         }
         audit.log("IMPORT", "Product", null, "jami=" + rows.size() + ", saqlandi=" + ok + ", xato=" + errors.size());
-        return new ImportResult(rows.size(), ok, errors);
+        return new ImportResult(rows.size(), ok, errors, warnings);
     }
 
     /** @return yangi boshlang'ich qoldiq qiymati */
-    private BigDecimal importRow(ExcelRow r) {
+    private BigDecimal importRow(ExcelRow r, List<RowError> warnings) {
         String barcode = r.get("barcode");
         barcodes.requireValid(barcode);
         String name = req(r.get("nomi"), "nomi");
+        if (name.length() > 255) {
+            throw new IllegalArgumentException("nomi 255 belgidan oshmasligi kerak");
+        }
         Unit unit = parseUnit(r.get("birlik"));
         BigDecimal price = number(r.get("narx"), "narx");
         BigDecimal cost = r.get("tannarx").isBlank() ? BigDecimal.ZERO : number(r.get("tannarx"), "tannarx");
         BigDecimal qty = r.get("miqdor").isBlank() ? BigDecimal.ZERO : QtyUtils.scale(number(r.get("miqdor"), "miqdor"));
         BigDecimal minQty = r.get("minqty").isBlank() ? BigDecimal.ZERO : QtyUtils.scale(number(r.get("minqty"), "minQty"));
         String category = r.get("kategoriya").isBlank() ? null : r.get("kategoriya");
-        Long supplierId = null;
-        String sup = r.get("taminotchi");
-        if (!sup.isBlank()) {
-            supplierId = suppliers.findByName(sup).orElseGet(() -> suppliers.save(Supplier.builder().name(sup).build())).getId();
-        }
         String mxik = r.get("mxik");
         if (!mxik.isBlank() && !mxik.matches("\\d{17}")) {
             throw new IllegalArgumentException("MXIK kodi 17 ta raqamdan iborat bo'lishi kerak: " + mxik);
@@ -102,15 +102,32 @@ public class ProductImportService {
         if (vat != null && vat.compareTo(new BigDecimal("100")) > 0) {
             throw new IllegalArgumentException("QQS 100% dan oshmasligi kerak");
         }
+        // ta'minotchi faqat qator tekshiruvdan o'tgach yaratiladi
+        Long supplierId = null;
+        String sup = r.get("taminotchi");
+        if (!sup.isBlank()) {
+            supplierId = suppliers.findByName(sup).orElseGet(() -> suppliers.save(Supplier.builder().name(sup).build())).getId();
+        }
         Product p = products.findByBarcode(barcode).orElse(null);
         if (p != null) {
             p.setName(name);
-            p.setCategory(category);
-            p.setUnit(unit);
             p.setPrice(MoneyUtils.round(price));
-            p.setMinQty(minQty);
-            p.setSupplierId(supplierId);
+            if (category != null) {
+                p.setCategory(category);
+            }
+            if (!r.get("birlik").isBlank()) {
+                p.setUnit(unit);
+            }
+            if (!r.get("minqty").isBlank()) {
+                p.setMinQty(minQty);
+            }
+            if (supplierId != null) {
+                p.setSupplierId(supplierId);
+            }
             applyFiscal(p, mxik, packageCode, vat);
+            if (!r.get("miqdor").isBlank() && qty.compareTo(p.getQty()) != 0) {
+                warnings.add(new RowError(r.number(), "Mavjud tovar miqdori o'zgartirilmadi (" + name + "): kirim yoki tuzatish orqali kiriting"));
+            }
             return BigDecimal.ZERO;
         }
         if (qty.signum() < 0) {
@@ -162,7 +179,10 @@ public class ProductImportService {
 
     static BigDecimal number(String v, String col) {
         try {
-            BigDecimal n = new BigDecimal(req(v, col).replace(" ", "").replace(",", "."));
+            String s = req(v, col).replaceAll("[\\s\\u00A0]", "");
+            // 12,000 yoki 1,250.50 — minglik ajratgich; 12,5 — kasr vergul
+            s = s.matches("\\d{1,3}(,\\d{3})+(\\.\\d+)?") ? s.replace(",", "") : s.replace(",", ".");
+            BigDecimal n = new BigDecimal(s);
             if (n.signum() < 0) {
                 throw new IllegalArgumentException(col + " manfiy bo'lmasligi kerak");
             }

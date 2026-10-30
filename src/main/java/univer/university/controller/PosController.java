@@ -39,14 +39,15 @@ public class PosController {
     @PostMapping("/checkout")
     @ResponseStatus(HttpStatus.CREATED)
     @PreAuthorize("@perm.create('KASSA')")
-    public SaleDto checkout(@Valid @RequestBody PosRequests.Checkout req) {
+    public SaleDto checkout(@Valid @RequestBody PosRequests.Checkout req,
+                            @RequestHeader(value = PrintController.KASSA, required = false) String kassa) {
         SaleDto sale = pos.checkout(req);
         // sotuv allaqachon commit bo'lgan; fiskal yoki printer xatosi uni bekor qilmaydi
         if (fiscal.enabled()) {
             fiscal.sendAfterCommit(FiscalReceipt.Type.SALE, sale.id());
             sale = pos.get(sale.id());
         }
-        print.autoEnqueue(PrintJobType.SALE, sale.id());
+        print.autoEnqueue(PrintJobType.SALE, sale.id(), kassa);
         return sale;
     }
 
@@ -86,7 +87,7 @@ public class PosController {
 
     /** PENDING/FAILED chekni fiskal modulga qayta yuborish. */
     @PostMapping("/sales/{id}/fiscalize")
-    @PreAuthorize("hasAnyRole('EGASI', 'ADMIN')")
+    @PreAuthorize("@perm.edit('FISKAL')")
     public SaleDto fiscalize(@PathVariable Long id) {
         fiscal.resend(FiscalReceipt.Type.SALE, id);
         return pos.get(id);

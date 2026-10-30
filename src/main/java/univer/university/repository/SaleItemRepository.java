@@ -1,5 +1,6 @@
 package univer.university.repository;
 
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -17,6 +18,11 @@ public interface SaleItemRepository extends JpaRepository<SaleItem, Long> {
 
     @Query("select i.productId, sum(i.qty) from SaleItem i where i.sale.createdAt >= :fromDt group by i.productId")
     List<Object[]> soldQtyByProduct(@Param("fromDt") LocalDateTime fromDt);
+
+    /** productId, miqdor, tushum: tushum kamayishi bo'yicha. */
+    @Query("select i.productId, sum(i.qty), sum(i.qty * i.price) from SaleItem i "
+            + "where i.sale.createdAt >= :fromDt and i.sale.createdAt < :toDt group by i.productId order by sum(i.qty * i.price) desc")
+    List<Object[]> topProducts(@Param("fromDt") LocalDateTime fromDt, @Param("toDt") LocalDateTime toDt, Pageable page);
 
     @Query("select s.userId, coalesce(sum(i.qty * (i.price - i.cost)), 0) from SaleItem i join i.sale s "
             + "where s.createdAt >= :fromDt and s.createdAt < :toDt group by s.userId")

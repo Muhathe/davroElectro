@@ -23,7 +23,7 @@ public class SettingsController {
     }
 
     @PutMapping("/store")
-    @PreAuthorize("hasRole('EGASI')")
+    @PreAuthorize("@perm.edit('SOZLAMALAR')")
     public StoreSettingsDto updateStore(@Valid @RequestBody SettingsRequests.Store req) {
         return service.updateStore(req);
     }

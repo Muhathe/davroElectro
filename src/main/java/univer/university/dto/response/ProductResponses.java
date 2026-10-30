@@ -22,7 +22,8 @@ public final class ProductResponses {
     public record RowError(int row, String message) {
     }
 
-    public record ImportResult(int total, int imported, List<RowError> errors) {
+    /** errors — saqlanmagan qatorlar; warnings — saqlangan, lekin e'tibor talab qiladigan qatorlar. */
+    public record ImportResult(int total, int imported, List<RowError> errors, List<RowError> warnings) {
     }
 
     public record StockRow(Long id, String name, String barcode, String category, Unit unit, BigDecimal qty,

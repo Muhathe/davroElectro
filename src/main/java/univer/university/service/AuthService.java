@@ -74,6 +74,6 @@ public class AuthService {
     }
 
     private List<PermissionRow> permissionsOf(User u) {
-        return matrix.matrix().stream().filter(p -> p.role() == u.getRole()).toList();
+        return matrix.forUser(u.getId(), u.getRole());
     }
 }

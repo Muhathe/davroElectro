@@ -35,6 +35,6 @@ public class PermissionChecker {
         if (a == null || !(a.getPrincipal() instanceof UserPrincipal p)) {
             return false;
         }
-        return matrix.allowed(p.role(), Module.valueOf(module), action);
+        return matrix.allowed(p.id(), p.role(), Module.valueOf(module), action);
     }
 }

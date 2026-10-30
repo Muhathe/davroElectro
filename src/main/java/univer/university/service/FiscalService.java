@@ -13,6 +13,7 @@ import univer.university.component.MoneyUtils;
 import univer.university.dto.response.PosResponses.FiscalInfo;
 import univer.university.entity.*;
 import univer.university.entity.enums.FiscalStatus;
+import univer.university.entity.enums.PaymentType;
 import univer.university.exception.BusinessException;
 import univer.university.exception.NotFoundException;
 import univer.university.fiscal.FiscalException;
@@ -167,7 +168,8 @@ public class FiscalService {
             List<FiscalReceipt.Line> lines = s.getItems().stream()
                     .map(i -> line(prods.get(i.getProductId()), i.getQty(), i.getPrice())).toList();
             return new FiscalReceipt(type, s.getId(), s.getCheckNo(), null, null, s.getCreatedAt(), s.getPaymentType(),
-                    s.getTotal(), s.getReceivedAmount(), lines);
+                    s.getTotal(), s.getReceivedAmount(), lines,
+                    s.getPayments().stream().collect(Collectors.toMap(SalePayment::getMethod, SalePayment::getAmount)));
         }
         SaleReturn r = returns.findById(id).orElseThrow();
         Sale orig = sales.findById(r.getSaleId()).orElseThrow();
@@ -176,7 +178,8 @@ public class FiscalService {
                 .map(i -> line(prods.get(i.getProductId()), i.getQty(), i.getPrice())).toList();
         String origSign = orig.getFiscal() == null ? null : orig.getFiscal().getFiscalSign();
         return new FiscalReceipt(type, r.getId(), "VZ-" + r.getId(), orig.getCheckNo(), origSign, r.getCreatedAt(),
-                orig.getPaymentType(), r.getTotal(), null, lines);
+                orig.getPaymentType() == PaymentType.ARALASH ? PaymentType.NAQD : orig.getPaymentType(), r.getTotal(), null, lines,
+                Map.of());
     }
 
     private static FiscalReceipt.Line line(Product p, BigDecimal qty, BigDecimal price) {

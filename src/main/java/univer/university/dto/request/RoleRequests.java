@@ -11,4 +11,8 @@ public final class RoleRequests {
     public record PermissionItem(@NotNull Role role, @NotNull Module module,
                                  boolean canView, boolean canCreate, boolean canEdit, boolean canDelete) {
     }
+
+    public record UserPermissionItem(@NotNull Module module,
+                                     boolean canView, boolean canCreate, boolean canEdit, boolean canDelete) {
+    }
 }

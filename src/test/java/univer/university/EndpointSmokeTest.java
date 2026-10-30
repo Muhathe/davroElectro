@@ -11,7 +11,8 @@ class EndpointSmokeTest extends ApiTestSupport {
 
     @ParameterizedTest
     @ValueSource(strings = {
-            "/api/auth/me", "/api/settings/store", "/api/pos/sales?fiscalStatus=PENDING",
+            "/api/auth/me", "/api/settings/store", "/api/pos/sales?fiscalStatus=PENDING", "/api/print/terminals",
+            "/api/print/status", "/api/print/jobs",
             "/api/users", "/api/users/1", "/api/roles/matrix", "/api/audit-logs",
             "/api/expense-categories", "/api/expenses",
             "/api/customers", "/api/customers/1", "/api/customers/1/debt", "/api/customers/1/payments",
@@ -25,7 +26,9 @@ class EndpointSmokeTest extends ApiTestSupport {
             "/api/products/import/template",
             "/api/suppliers", "/api/suppliers/1",
             "/api/pos/cash/balance", "/api/pos/sales", "/api/pos/sales/history",
-            "/api/returns",
+            "/api/returns", "/api/returns/search?checkNo=CHK&product=lampa", "/api/returns/sellers",
+            "/api/returns/sales/search?checkNo=CHK&sellerId=1&product=lampa&from=2020-01-01",
+            "/api/roles/capabilities", "/api/roles/users/2/permissions",
             "/api/stock", "/api/stock/movements", "/api/stock/order-suggestions", "/api/stock/purchases",
             "/api/stock/import/template"
     })

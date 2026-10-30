@@ -1,6 +1,8 @@
 package univer.university.service;
 
 import jakarta.persistence.criteria.Predicate;
+import jakarta.persistence.criteria.Root;
+import jakarta.persistence.criteria.Subquery;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
@@ -52,9 +54,6 @@ public class PosService {
                 throw new BusinessException("Mijoz faol emas");
             }
         }
-        if (req.paymentType() == PaymentType.NASIYA && customer == null) {
-            throw new BusinessException("Nasiya savdo uchun mijoz tanlanishi shart");
-        }
 
         // takroriy tovarlarni birlashtirish
         Map<Long, BigDecimal> wanted = new TreeMap<>();
@@ -67,7 +66,7 @@ public class PosService {
         BigDecimal discount = customer == null ? BigDecimal.ZERO : MoneyUtils.nz(customer.getDiscountPercent());
 
         Sale sale = Sale.builder().checkNo(numbers.nextCheckNo()).createdAt(DateUtils.now()).userId(currentUser.id())
-                .customerId(customer == null ? null : customer.getId()).paymentType(req.paymentType())
+                .customerId(customer == null ? null : customer.getId())
                 .discountPercent(discount).total(BigDecimal.ZERO).status(SaleStatus.COMPLETED).build();
 
         BigDecimal subtotal = BigDecimal.ZERO;
@@ -104,13 +103,24 @@ public class PosService {
         sale.setSubtotal(subtotal);
         sale.setDiscountAmount(subtotal.subtract(total).max(BigDecimal.ZERO));
 
-        if (req.paymentType() == PaymentType.NAQD && req.receivedAmount() != null
-                && req.receivedAmount().compareTo(total) < 0) {
-            throw new BusinessException("Qabul qilingan summa chek summasidan kam (" + total.toPlainString() + ")");
+        Map<PaymentType, BigDecimal> parts = paymentParts(req, total);
+        BigDecimal credit = parts.getOrDefault(PaymentType.NASIYA, BigDecimal.ZERO);
+        if (credit.signum() > 0 && customer == null) {
+            throw new BusinessException("Nasiya savdo uchun mijoz tanlanishi shart");
         }
-        if (req.paymentType() == PaymentType.NAQD && req.receivedAmount() != null) {
+        sale.setPaymentType(parts.size() == 1 ? parts.keySet().iterator().next() : PaymentType.ARALASH);
+        sale.setCreditAmount(MoneyUtils.round(credit));
+        for (Map.Entry<PaymentType, BigDecimal> e : parts.entrySet()) {
+            sale.addPayment(SalePayment.builder().method(e.getKey()).amount(e.getValue()).build());
+        }
+
+        BigDecimal naqd = parts.get(PaymentType.NAQD);
+        if (naqd != null && req.receivedAmount() != null) {
+            if (req.receivedAmount().compareTo(naqd) < 0) {
+                throw new BusinessException("Qabul qilingan summa naqd to'lovdan kam (" + naqd.toPlainString() + ")");
+            }
             sale.setReceivedAmount(MoneyUtils.round(req.receivedAmount()));
-            sale.setChangeAmount(MoneyUtils.round(req.receivedAmount().subtract(total)));
+            sale.setChangeAmount(MoneyUtils.round(req.receivedAmount().subtract(naqd)));
         }
         // fiskal chek commit dan keyin yuboriladi (PosController)
         sale.setFiscal(fiscal.initialData());
@@ -121,15 +131,50 @@ public class PosService {
             movements.save(StockMovement.builder().productId((Long) m[0]).type(MovementType.SALE).qty((BigDecimal) m[1])
                     .cost((BigDecimal) m[2]).refId(saved.getId()).createdAt(saved.getCreatedAt()).build());
         }
-        // 6) kassa (nasiyada o'zgarmaydi)
-        if (req.paymentType() != PaymentType.NASIYA) {
-            cash.record(CashDirection.IN, total, PayMethod.fromPayment(req.paymentType()), CashSource.SALE,
-                    saved.getId(), "Sotuv " + saved.getCheckNo());
+        // 6) kassa: har bir pul usuli alohida (nasiya qismida o'zgarmaydi)
+        for (Map.Entry<PaymentType, BigDecimal> e : parts.entrySet()) {
+            if (e.getKey() != PaymentType.NASIYA) {
+                cash.record(CashDirection.IN, e.getValue(), PayMethod.fromPayment(e.getKey()), CashSource.SALE,
+                        saved.getId(), "Sotuv " + saved.getCheckNo());
+            }
         }
         // 7) hodisa (jurnal shu tranzaksiya BEFORE_COMMIT da yoziladi)
         events.publishEvent(new SaleCompletedEvent(saved.getId(), saved.getCheckNo(), total, MoneyUtils.round(cogs),
-                req.paymentType(), DateUtils.today()));
+                parts, DateUtils.today()));
         return toDtos(List.of(saved)).get(0);
+    }
+
+    /** Chekni to'lov qismlariga ajratadi; payments dagi pul summasidan ortgani NASIYA bo'ladi. */
+    private static Map<PaymentType, BigDecimal> paymentParts(PosRequests.Checkout req, BigDecimal total) {
+        Map<PaymentType, BigDecimal> parts = new EnumMap<>(PaymentType.class);
+        if (req.payments() == null || req.payments().isEmpty()) {
+            if (req.paymentType() == null || req.paymentType() == PaymentType.ARALASH) {
+                throw BusinessException.badRequest("To'lov turini tanlang");
+            }
+            parts.put(req.paymentType(), total);
+            return parts;
+        }
+        BigDecimal paid = BigDecimal.ZERO;
+        for (PosRequests.Payment p : req.payments()) {
+            if (p.method() == PaymentType.ARALASH) {
+                throw BusinessException.badRequest("To'lov usuli noto'g'ri");
+            }
+            if (p.method() != PaymentType.NASIYA) {
+                BigDecimal amount = MoneyUtils.round(p.amount());
+                parts.merge(p.method(), amount, BigDecimal::add);
+                paid = paid.add(amount);
+            }
+        }
+        if (paid.compareTo(total) > 0) {
+            throw new BusinessException("To'lovlar chek summasidan oshib ketdi (" + total.toPlainString() + ")");
+        }
+        if (paid.compareTo(total) < 0) {
+            parts.put(PaymentType.NASIYA, total.subtract(paid));
+        }
+        if (parts.isEmpty()) {
+            throw BusinessException.badRequest("To'lov turini tanlang");
+        }
+        return parts;
     }
 
     @Transactional(readOnly = true)
@@ -180,7 +225,11 @@ public class PosService {
                 p.add(cb.equal(root.get("customerId"), customerId));
             }
             if (paymentType != null) {
-                p.add(cb.equal(root.get("paymentType"), paymentType));
+                // aralash cheklar ham shu usul bilan to'langan bo'lsa ko'rinadi
+                Subquery<Long> part = q.subquery(Long.class);
+                Root<SalePayment> sp = part.from(SalePayment.class);
+                part.select(sp.<Long>get("id")).where(cb.equal(sp.get("sale"), root), cb.equal(sp.get("method"), paymentType));
+                p.add(cb.or(cb.equal(root.get("paymentType"), paymentType), cb.exists(part)));
             }
             if (fiscalStatus != null) {
                 p.add(cb.equal(root.get("fiscal").get("status"), fiscalStatus));
@@ -208,10 +257,15 @@ public class PosService {
             // eski sotuvlarda subtotal saqlanmagan
             BigDecimal subtotal = s.getSubtotal() == null ? s.getTotal() : s.getSubtotal();
             BigDecimal discountAmount = s.getDiscountAmount() == null ? BigDecimal.ZERO : s.getDiscountAmount();
+            // eski sotuvlarda to'lov qismlari saqlanmagan
+            BigDecimal credit = s.getCreditAmount() != null ? s.getCreditAmount()
+                    : s.getPaymentType() == PaymentType.NASIYA ? s.getTotal() : BigDecimal.ZERO;
+            List<PaymentLine> payments = s.getPayments().isEmpty() ? List.of(new PaymentLine(s.getPaymentType(), s.getTotal()))
+                    : s.getPayments().stream().map(p -> new PaymentLine(p.getMethod(), p.getAmount())).toList();
             res.add(new SaleDto(s.getId(), s.getCheckNo(), s.getCreatedAt(), s.getUserId(), userNames.get(s.getUserId()),
                     s.getCustomerId(), custNames.get(s.getCustomerId()), s.getPaymentType(), s.getDiscountPercent(),
                     subtotal, discountAmount, s.getTotal(), s.getReceivedAmount(), s.getChangeAmount(), s.getStatus(),
-                    FiscalService.toInfo(s.getFiscal()), lines));
+                    FiscalService.toInfo(s.getFiscal()), lines, credit, payments));
         }
         return res;
     }

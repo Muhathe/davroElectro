@@ -19,12 +19,15 @@ public final class PosResponses {
                              LocalDateTime fiscalizedAt, String error) {
     }
 
-    /** subtotal - discountAmount = total; receivedAmount/change faqat naqdda. */
+    public record PaymentLine(PaymentType method, BigDecimal amount) {
+    }
+
+    /** subtotal - discountAmount = total; receivedAmount/change faqat naqdda; creditAmount — nasiyaga o'tgan qism. */
     public record SaleDto(Long id, String checkNo, LocalDateTime createdAt, Long userId, String cashierName,
                           Long customerId, String customerName, PaymentType paymentType, BigDecimal discountPercent,
                           BigDecimal subtotal, BigDecimal discountAmount, BigDecimal total,
                           BigDecimal receivedAmount, BigDecimal change, SaleStatus status, FiscalInfo fiscal,
-                          List<SaleLine> items) {
+                          List<SaleLine> items, BigDecimal creditAmount, List<PaymentLine> payments) {
     }
 
     public record CashBalance(BigDecimal total, BigDecimal naqd, BigDecimal karta) {

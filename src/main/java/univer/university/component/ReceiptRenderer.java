@@ -3,6 +3,7 @@ package univer.university.component;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import univer.university.dto.response.PosResponses.FiscalInfo;
+import univer.university.dto.response.PosResponses.PaymentLine;
 import univer.university.dto.response.PosResponses.SaleDto;
 import univer.university.dto.response.PosResponses.SaleLine;
 import univer.university.dto.response.ReturnResponses.ReturnDto;
@@ -51,6 +52,11 @@ public class ReceiptRenderer {
         }
         p.bold(true).tall(true).pair("JAMI:", money(s.total())).tall(false).bold(false);
         p.pair("To'lov turi:", label(s.paymentType()));
+        if (s.paymentType() == PaymentType.ARALASH) {
+            for (PaymentLine l : s.payments()) {
+                p.pair("  " + label(l.method()) + ":", money(l.amount()));
+            }
+        }
         if (s.receivedAmount() != null) {
             p.pair("Berildi:", money(s.receivedAmount()));
             p.pair("Qaytim:", money(s.change()));
@@ -149,6 +155,7 @@ public class ReceiptRenderer {
             case KARTA -> "Karta";
             case CLICK -> "Click";
             case NASIYA -> "Nasiya";
+            case ARALASH -> "Aralash";
         };
     }
 

@@ -39,6 +39,9 @@ public class PrintJob {
 
     private Long userId;
 
+    /** Qaysi kassada chiqishi kerak; bo'sh bo'lsa istalgan kassa agenti oladi. */
+    private Long terminalId;
+
     private LocalDateTime takenAt;
 
     private LocalDateTime printedAt;

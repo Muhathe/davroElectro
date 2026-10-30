@@ -18,7 +18,7 @@ public class AiController {
     @PostMapping("/chat")
     @PreAuthorize("@perm.create('AI')")
     public Answer chat(@Valid @RequestBody AiRequests.Chat req) {
-        return service.chat(req.message());
+        return service.chat(req.message(), req.history());
     }
 
     @GetMapping("/quick-insight")

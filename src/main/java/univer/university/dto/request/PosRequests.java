@@ -16,7 +16,15 @@ public final class PosRequests {
     public record Item(@NotNull Long productId, @NotNull @DecimalMin(value = "0.001", message = "Miqdor 0 dan katta bo'lishi kerak") BigDecimal qty) {
     }
 
-    public record Checkout(Long customerId, @NotNull PaymentType paymentType, BigDecimal receivedAmount,
-                           @NotEmpty @Valid List<Item> items) {
+    public record Payment(@NotNull PaymentType method,
+                          @NotNull @DecimalMin(value = "0.01", message = "To'lov summasi 0 dan katta bo'lishi kerak") BigDecimal amount) {
+    }
+
+    /**
+     * Bitta usul: paymentType. Bir nechta usul: payments (paymentType e'tiborsiz qoldiriladi);
+     * NAQD/KARTA/CLICK dan ortgan qoldiq avtomatik mijozning nasiyasiga o'tadi. receivedAmount — naqd qismi uchun.
+     */
+    public record Checkout(Long customerId, PaymentType paymentType, BigDecimal receivedAmount,
+                           @NotEmpty @Valid List<Item> items, @Valid List<Payment> payments) {
     }
 }

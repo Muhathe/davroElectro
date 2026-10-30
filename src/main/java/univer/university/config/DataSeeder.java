@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -30,6 +31,7 @@ import java.util.List;
 public class DataSeeder implements ApplicationRunner {
 
     private final TransactionTemplate tx;
+    private final JdbcTemplate jdbc;
     private final PasswordEncoder encoder;
     private final UserRepository users;
     private final RolePermissionRepository permissions;
@@ -57,6 +59,7 @@ public class DataSeeder implements ApplicationRunner {
 
     @Override
     public void run(ApplicationArguments args) {
+        dropEnumChecks();
         if (!enabled) {
             return;
         }
@@ -84,10 +87,17 @@ public class DataSeeder implements ApplicationRunner {
         }
     }
 
+    /**
+     * Mavjud bazada enum ustunlaridagi eski CHECK cheklovlari yangi qiymatlarni (ARALASH, yangi modullar) rad etadi;
+     * ddl-auto=update ularni yangilamaydi. Qiymatlarni baribir Java enum nazorat qiladi.
+     */
+    private void dropEnumChecks() {
+        jdbc.execute("ALTER TABLE sales DROP CONSTRAINT IF EXISTS sales_payment_type_check");
+        jdbc.execute("ALTER TABLE role_permissions DROP CONSTRAINT IF EXISTS role_permissions_module_check");
+    }
+
+    /** Faqat yetishmagan qatorlar qo'shiladi: ishlab turgan do'kondagi o'zgartirilgan ruxsatlar saqlanadi. */
     private void seedPermissions() {
-        if (permissions.count() > 0) {
-            return;
-        }
         // tartib: EGASI, ADMIN, BUXGALTER, SOTUVCHI; har biri: ko'rish, yaratish, tahrirlash, o'chirish
         put(Module.KASSA, "TTTT", "TTTT", "TFFF", "TTFF");
         put(Module.KASSA_HARAJAT, "TTTT", "TTTT", "TTFF", "FFFF");
@@ -100,6 +110,9 @@ public class DataSeeder implements ApplicationRunner {
         put(Module.BUXGALTERIYA, "TTTT", "FFFF", "TTFF", "FFFF");
         put(Module.XODIMLAR, "TTTT", "TTTT", "FFFF", "FFFF");
         put(Module.AI, "TTTT", "TTTT", "TTFF", "FFFF");
+        put(Module.SOZLAMALAR, "TTTT", "FFFF", "FFFF", "FFFF");
+        put(Module.PRINTER, "TTTT", "TTTT", "FFFF", "FFFF");
+        put(Module.FISKAL, "TTTT", "TTTT", "FFFF", "FFFF");
     }
 
     private void put(Module m, String egasi, String admin, String buxgalter, String sotuvchi) {
@@ -110,6 +123,9 @@ public class DataSeeder implements ApplicationRunner {
     }
 
     private void save(Role r, Module m, String f) {
+        if (permissions.findByRoleAndModule(r, m).isPresent()) {
+            return;
+        }
         permissions.save(RolePermission.builder().role(r).module(m).canView(f.charAt(0) == 'T').canCreate(f.charAt(1) == 'T')
                 .canEdit(f.charAt(2) == 'T').canDelete(f.charAt(3) == 'T').build());
     }
