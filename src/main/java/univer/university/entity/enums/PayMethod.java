@@ -11,7 +11,7 @@ public enum PayMethod {
             case NAQD -> NAQD;
             case KARTA -> KARTA;
             case CLICK -> CLICK;
-            case NASIYA -> throw new BusinessException("Nasiya pul to'lovi emas");
+            case NASIYA, ARALASH -> throw new BusinessException("Bu turdagi chek bitta pul to'lovi emas");
         };
     }
 }

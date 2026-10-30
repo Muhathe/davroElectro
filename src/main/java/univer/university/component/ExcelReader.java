@@ -1,7 +1,10 @@
 package univer.university.component;
 
 import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.CellStyle;
+import org.apache.poi.ss.usermodel.CellType;
 import org.apache.poi.ss.usermodel.DataFormatter;
+import org.apache.poi.ss.usermodel.DateUtil;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
@@ -12,6 +15,7 @@ import univer.university.exception.BusinessException;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -38,7 +42,21 @@ public class ExcelReader {
         return header.toLowerCase(Locale.ROOT).replaceAll("[^\\p{L}\\p{N}]", "");
     }
 
-    public List<ExcelRow> read(MultipartFile file) {
+    /** Katak qiymati: son formatidan qat'i nazar aniq (12,000 -> 12000, barcode -> to'liq raqam), formula — natijasi. */
+    private static String text(Cell cell, DataFormatter fmt) {
+        boolean formula = cell.getCellType() == CellType.FORMULA;
+        CellType type = formula ? cell.getCachedFormulaResultType() : cell.getCellType();
+        if (type == CellType.NUMERIC && !DateUtil.isCellDateFormatted(cell)) {
+            return BigDecimal.valueOf(cell.getNumericCellValue()).stripTrailingZeros().toPlainString();
+        }
+        if (type == CellType.STRING) {
+            return cell.getStringCellValue().trim();
+        }
+        return formula ? "" : fmt.formatCellValue(cell).trim();
+    }
+
+    /** @param required majburiy ustunlar (normalize qilingan nomlar) */
+    public List<ExcelRow> read(MultipartFile file, String... required) {
         if (file == null || file.isEmpty()) {
             throw BusinessException.badRequest("Fayl bo'sh");
         }
@@ -55,8 +73,15 @@ public class ExcelReader {
                 throw BusinessException.badRequest("Birinchi qatorda ustun nomlari bo'lishi kerak");
             }
             List<String> keys = new ArrayList<>();
-            for (Cell c : header) {
-                keys.add(normalize(fmt.formatCellValue(c)));
+            // indeks bo'yicha: bo'sh sarlavha katagi keyingi ustunlarni surib yubormasligi uchun
+            for (int c = 0; c < header.getLastCellNum(); c++) {
+                Cell cell = header.getCell(c);
+                keys.add(cell == null ? "" : normalize(fmt.formatCellValue(cell)));
+            }
+            for (String col : required) {
+                if (!keys.contains(col)) {
+                    throw BusinessException.badRequest("Faylda '" + col + "' ustuni yo'q");
+                }
             }
             for (int r = 1; r <= sheet.getLastRowNum(); r++) {
                 Row row = sheet.getRow(r);
@@ -67,7 +92,7 @@ public class ExcelReader {
                 boolean any = false;
                 for (int c = 0; c < keys.size(); c++) {
                     Cell cell = row.getCell(c);
-                    String v = cell == null ? "" : fmt.formatCellValue(cell).trim();
+                    String v = cell == null ? "" : text(cell, fmt);
                     if (!v.isEmpty()) {
                         any = true;
                     }
@@ -87,6 +112,10 @@ public class ExcelReader {
     public byte[] template(String sheetName, List<String> headers, List<String> example) {
         try (XSSFWorkbook wb = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             Sheet sheet = wb.createSheet(sheetName);
+            // birinchi ustun (barcode) matn: Excel uzun raqamni 4.78E+12 ko'rinishiga o'tkazmasligi uchun
+            CellStyle textStyle = wb.createCellStyle();
+            textStyle.setDataFormat(wb.createDataFormat().getFormat("@"));
+            sheet.setDefaultColumnStyle(0, textStyle);
             Row h = sheet.createRow(0);
             for (int i = 0; i < headers.size(); i++) {
                 h.createCell(i).setCellValue(headers.get(i));
@@ -96,6 +125,7 @@ public class ExcelReader {
             for (int i = 0; i < example.size(); i++) {
                 ex.createCell(i).setCellValue(example.get(i));
             }
+            ex.getCell(0).setCellStyle(textStyle);
             wb.write(out);
             return out.toByteArray();
         } catch (IOException e) {

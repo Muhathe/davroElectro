@@ -16,8 +16,10 @@ import java.util.List;
 public interface PrintJobRepository extends JpaRepository<PrintJob, Long> {
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("select j from PrintJob j where j.status = univer.university.entity.enums.PrintJobStatus.NEW order by j.id")
-    List<PrintJob> lockNext(Pageable page);
+    /** Shu kassaga yoki kassasi ko'rsatilmagan vazifalar (terminalId null — eski umumiy token). */
+    @Query("select j from PrintJob j where j.status = univer.university.entity.enums.PrintJobStatus.NEW "
+            + "and (j.terminalId is null or j.terminalId = :terminalId) order by j.id")
+    List<PrintJob> lockNext(@Param("terminalId") Long terminalId, Pageable page);
 
     /** Agent o'chiq paytda yig'ilgan eski cheklar keyin birdaniga chiqib ketmasin. */
     @Modifying

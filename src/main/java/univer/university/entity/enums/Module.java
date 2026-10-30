@@ -12,5 +12,8 @@ public enum Module {
     MOLIYA,
     BUXGALTERIYA,
     XODIMLAR,
-    AI
+    AI,
+    SOZLAMALAR,
+    PRINTER,
+    FISKAL
 }

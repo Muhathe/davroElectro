@@ -16,6 +16,9 @@ import java.util.Optional;
 
 public interface SaleRepository extends JpaRepository<Sale, Long>, JpaSpecificationExecutor<Sale> {
 
+    String CREDIT = "coalesce(s.creditAmount, case when s.paymentType = univer.university.entity.enums.PaymentType.NASIYA "
+            + "then s.total else 0bd end)";
+
     Optional<Sale> findByCheckNo(String checkNo);
 
     List<Sale> findByCreatedAtGreaterThanEqualAndCreatedAtLessThanOrderByCreatedAtDesc(LocalDateTime from, LocalDateTime to);
@@ -28,12 +31,11 @@ public interface SaleRepository extends JpaRepository<Sale, Long>, JpaSpecificat
     @Query("select count(s) from Sale s where s.createdAt >= :fromDt and s.createdAt < :toDt")
     long countInRange(@Param("fromDt") LocalDateTime fromDt, @Param("toDt") LocalDateTime toDt);
 
-    @Query("select coalesce(sum(s.total), 0) from Sale s where s.createdAt >= :fromDt and s.createdAt < :toDt "
-            + "and s.paymentType <> univer.university.entity.enums.PaymentType.NASIYA")
+    /** Chekning pul bilan to'langan qismi (eski sotuvlarda creditAmount bo'sh). */
+    @Query("select coalesce(sum(s.total - " + CREDIT + "), 0) from Sale s where s.createdAt >= :fromDt and s.createdAt < :toDt")
     BigDecimal sumNonCredit(@Param("fromDt") LocalDateTime fromDt, @Param("toDt") LocalDateTime toDt);
 
-    @Query("select coalesce(sum(s.total), 0) from Sale s where s.customerId = :cid "
-            + "and s.paymentType = univer.university.entity.enums.PaymentType.NASIYA")
+    @Query("select coalesce(sum(" + CREDIT + "), 0) from Sale s where s.customerId = :cid")
     BigDecimal sumCreditByCustomer(@Param("cid") Long customerId);
 
     @Query("select s.userId, count(s), coalesce(sum(s.total), 0) from Sale s "

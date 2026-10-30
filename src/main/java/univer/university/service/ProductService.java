@@ -2,11 +2,13 @@ package univer.university.service;
 
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import univer.university.component.BarcodeValidator;
+import univer.university.component.DateUtils;
 import univer.university.component.MoneyUtils;
 import univer.university.component.QtyUtils;
 import univer.university.dto.request.ProductRequests;
@@ -14,10 +16,15 @@ import univer.university.dto.request.SupplierRequests;
 import univer.university.dto.response.ProductResponses.ProductDto;
 import univer.university.dto.response.ProductResponses.SupplierDto;
 import univer.university.entity.Product;
+import univer.university.entity.StockMovement;
 import univer.university.entity.Supplier;
+import univer.university.entity.enums.MovementType;
+import univer.university.entity.enums.Unit;
+import univer.university.event.OpeningBalanceEvent;
 import univer.university.exception.BusinessException;
 import univer.university.exception.NotFoundException;
 import univer.university.repository.ProductRepository;
+import univer.university.repository.StockMovementRepository;
 import univer.university.repository.SupplierRepository;
 
 import java.math.BigDecimal;
@@ -33,6 +40,8 @@ public class ProductService {
     private final SupplierRepository suppliers;
     private final BarcodeValidator barcodes;
     private final AuditService audit;
+    private final StockMovementRepository movements;
+    private final ApplicationEventPublisher events;
 
     public static ProductDto toDto(Product p) {
         return new ProductDto(p.getId(), p.getName(), p.getBarcode(), p.getCategory(), p.getUnit(), p.getAvgCost(),
@@ -84,11 +93,29 @@ public class ProductService {
             throw BusinessException.conflict("Bu barcode allaqachon mavjud");
         }
         checkSupplier(req.supplierId());
+        if (req.initialQty() == null) {
+            throw BusinessException.badRequest("Tovar sonini kiriting");
+        }
+        BigDecimal qty = QtyUtils.scale(req.initialQty());
+        if (req.unit() == Unit.DONA && qty.stripTrailingZeros().scale() > 0) {
+            throw new BusinessException("Dona birligidagi tovar butun sonda bo'lishi kerak: " + req.name());
+        }
+        BigDecimal cost = MoneyUtils.round(req.initialCost());
+        if (qty.signum() > 0 && cost.signum() <= 0) {
+            throw new BusinessException("Tovar bor bo'lsa, tannarxini ham kiriting");
+        }
         Product p = products.save(Product.builder().name(req.name().trim()).barcode(req.barcode())
-                .category(blankToNull(req.category())).unit(req.unit()).price(MoneyUtils.round(req.price()))
+                .category(blankToNull(req.category())).unit(req.unit()).avgCost(cost).lastCost(cost)
+                .price(MoneyUtils.round(req.price())).qty(qty)
                 .minQty(QtyUtils.scale(req.minQty())).supplierId(req.supplierId()).active(true).build());
         applyFiscalCodes(p, req);
-        audit.log("CREATE", "Product", p.getId(), p.getName() + " / " + p.getBarcode());
+        if (qty.signum() > 0) {
+            // Excel importidagi kabi boshlang'ich qoldiq (egasi kapitali hisobiga)
+            movements.save(StockMovement.builder().productId(p.getId()).type(MovementType.OPENING).qty(qty)
+                    .cost(cost).createdAt(DateUtils.now()).build());
+            events.publishEvent(new OpeningBalanceEvent(BigDecimal.ZERO, MoneyUtils.round(qty.multiply(cost)), DateUtils.today()));
+        }
+        audit.log("CREATE", "Product", p.getId(), p.getName() + " / " + p.getBarcode() + ", miqdor=" + qty);
         return toDto(p);
     }
 

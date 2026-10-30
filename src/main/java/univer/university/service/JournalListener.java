@@ -28,13 +28,12 @@ public class JournalListener {
 
     @TransactionalEventListener(phase = TransactionPhase.BEFORE_COMMIT)
     public void onSale(SaleCompletedEvent e) {
-        String debit = switch (e.paymentType()) {
-            case NAQD -> KASSA;
-            case KARTA, CLICK -> KARTA;
-            case NASIYA -> MIJOZLAR;
-        };
-        acc.post(e.date(), "Sotuv " + e.checkNo() + (e.paymentType() == PaymentType.NASIYA ? " (nasiya)" : ""),
-                "SALE", e.saleId(), dt(debit, e.total()), kt(TUSHUM, e.total()));
+        BigDecimal naqd = e.parts().getOrDefault(PaymentType.NAQD, BigDecimal.ZERO);
+        BigDecimal karta = e.parts().getOrDefault(PaymentType.KARTA, BigDecimal.ZERO)
+                .add(e.parts().getOrDefault(PaymentType.CLICK, BigDecimal.ZERO));
+        BigDecimal nasiya = e.parts().getOrDefault(PaymentType.NASIYA, BigDecimal.ZERO);
+        acc.post(e.date(), "Sotuv " + e.checkNo() + (nasiya.signum() > 0 ? " (nasiya)" : ""),
+                "SALE", e.saleId(), dt(KASSA, naqd), dt(KARTA, karta), dt(MIJOZLAR, nasiya), kt(TUSHUM, e.total()));
         acc.post(e.date(), "Sotilgan tovar tannarxi " + e.checkNo(), "SALE", e.saleId(),
                 dt(TANNARX, e.cogs()), kt(SKLAD, e.cogs()));
     }

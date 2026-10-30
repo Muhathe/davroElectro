@@ -64,6 +64,10 @@ public class Sale {
     @Column(name = "change_amount", precision = 18, scale = 2)
     private BigDecimal changeAmount;
 
+    /** Mijoz qarziga o'tgan qism (eski sotuvlarda bo'sh: nasiya bo'lsa butun total). */
+    @Column(precision = 18, scale = 2)
+    private BigDecimal creditAmount;
+
     @Embedded
     private FiscalData fiscal;
 
@@ -75,8 +79,17 @@ public class Sale {
     @OneToMany(mappedBy = "sale", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<SaleItem> items = new ArrayList<>();
 
+    @Builder.Default
+    @OneToMany(mappedBy = "sale", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<SalePayment> payments = new ArrayList<>();
+
     public void addItem(SaleItem item) {
         item.setSale(this);
         items.add(item);
+    }
+
+    public void addPayment(SalePayment payment) {
+        payment.setSale(this);
+        payments.add(payment);
     }
 }

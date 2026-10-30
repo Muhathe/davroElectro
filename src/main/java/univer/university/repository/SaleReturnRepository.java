@@ -3,6 +3,7 @@ package univer.university.repository;
 import univer.university.entity.enums.FiscalStatus;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import univer.university.entity.SaleReturn;
@@ -11,7 +12,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
-public interface SaleReturnRepository extends JpaRepository<SaleReturn, Long> {
+public interface SaleReturnRepository extends JpaRepository<SaleReturn, Long>, JpaSpecificationExecutor<SaleReturn> {
 
     List<SaleReturn> findTop20ByOrderByCreatedAtDesc();
 

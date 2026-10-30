@@ -74,7 +74,7 @@ public abstract class ApiTestSupport {
     protected long newProduct(String name, String price, String qty, String cost) throws Exception {
         String barcode = String.valueOf(BARCODE.incrementAndGet());
         long id = ok("POST", "/api/products", "davron", Map.of("name", name, "barcode", barcode, "unit", "DONA",
-                "price", new BigDecimal(price), "minQty", BigDecimal.ZERO)).get("id").asLong();
+                "price", new BigDecimal(price), "minQty", BigDecimal.ZERO, "initialQty", BigDecimal.ZERO)).get("id").asLong();
         BigDecimal total = new BigDecimal(qty).multiply(new BigDecimal(cost));
         ok("POST", "/api/stock/incoming", "davron", Map.of("paid", total, "method", "NAQD",
                 "items", java.util.List.of(Map.of("productId", id, "qty", new BigDecimal(qty), "cost", new BigDecimal(cost)))));
