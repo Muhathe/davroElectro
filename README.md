@@ -83,3 +83,11 @@ Qo'shimcha modul `QARZLAR` (mijoz to'lovi / ta'minotchi qarzi) va `KASSA_HARAJAT
 ```sql
 ALTER TABLE purchases ALTER COLUMN supplier_id DROP NOT NULL;
 ```
+
+## Server va CI/CD
+
+- Server: `/opt/back` (`app.jar`, `.env`, `deploy.sh`, `logs/app.log`), systemd service `davron-back`, port 8082.
+- Sozlamalar `/opt/back/.env` da (DB, JWT, seed paroli, CORS, AI kaliti). O'zgartirgandan keyin: `systemctl restart davron-back`.
+- Loglar: `tail -f /opt/back/logs/app.log`.
+- `.github/workflows/deploy.yml`: PR va `master` ga push bo'lganda testlar yuradi; `master` da muvaffaqiyatli bo'lsa jar serverga yuklanadi va `deploy.sh` ishga tushiradi. Ilova 3 daqiqada javob bermasa eski jar tiklanadi.
+- GitHub secrets: `SSH_HOST`, `SSH_USER` (`root`), `SSH_KEY` (deploy kalitining private qismi; public qismi serverdagi `~/.ssh/authorized_keys` da bo'lishi kerak).
