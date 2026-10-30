@@ -37,6 +37,7 @@ public class ReturnService {
     private final AuditService audit;
     private final CurrentUserProvider currentUser;
     private final ApplicationEventPublisher events;
+    private final FiscalService fiscal;
 
     @Transactional(readOnly = true)
     public SaleForReturn findSale(String checkNo) {
@@ -61,7 +62,8 @@ public class ReturnService {
 
         boolean toDebt = sale.getPaymentType() == PaymentType.NASIYA;
         SaleReturn ret = SaleReturn.builder().saleId(sale.getId()).customerId(sale.getCustomerId()).reason(req.reason())
-                .total(BigDecimal.ZERO).toDebt(toDebt).createdAt(DateUtils.now()).userId(currentUser.id()).build();
+                .total(BigDecimal.ZERO).toDebt(toDebt).createdAt(DateUtils.now()).userId(currentUser.id())
+                .fiscal(fiscal.initialData()).build();
         BigDecimal total = BigDecimal.ZERO;
         BigDecimal cogs = BigDecimal.ZERO;
         List<Object[]> moves = new ArrayList<>();
@@ -146,6 +148,7 @@ public class ReturnService {
                 .collect(Collectors.toMap(Product::getId, Product::getName));
         List<ReturnableLine> items = r.getItems().stream().map(i -> new ReturnableLine(i.getProductId(),
                 names.get(i.getProductId()), i.getQty(), i.getQty(), BigDecimal.ZERO, i.getPrice())).toList();
-        return new ReturnDto(r.getId(), r.getSaleId(), checkNo, r.getReason(), r.getTotal(), r.isToDebt(), r.getCreatedAt(), items);
+        return new ReturnDto(r.getId(), r.getSaleId(), checkNo, r.getReason(), r.getTotal(), r.isToDebt(), r.getCreatedAt(), items,
+                FiscalService.toInfo(r.getFiscal()));
     }
 }

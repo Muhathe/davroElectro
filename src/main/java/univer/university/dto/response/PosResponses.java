@@ -1,5 +1,6 @@
 package univer.university.dto.response;
 
+import univer.university.entity.enums.FiscalStatus;
 import univer.university.entity.enums.PaymentType;
 import univer.university.entity.enums.SaleStatus;
 
@@ -14,9 +15,16 @@ public final class PosResponses {
     public record SaleLine(Long productId, String name, BigDecimal qty, BigDecimal price, BigDecimal lineTotal) {
     }
 
+    public record FiscalInfo(FiscalStatus status, String terminalId, String receiptSeq, String fiscalSign, String qrUrl,
+                             LocalDateTime fiscalizedAt, String error) {
+    }
+
+    /** subtotal - discountAmount = total; receivedAmount/change faqat naqdda. */
     public record SaleDto(Long id, String checkNo, LocalDateTime createdAt, Long userId, String cashierName,
                           Long customerId, String customerName, PaymentType paymentType, BigDecimal discountPercent,
-                          BigDecimal total, SaleStatus status, List<SaleLine> items) {
+                          BigDecimal subtotal, BigDecimal discountAmount, BigDecimal total,
+                          BigDecimal receivedAmount, BigDecimal change, SaleStatus status, FiscalInfo fiscal,
+                          List<SaleLine> items) {
     }
 
     public record CashBalance(BigDecimal total, BigDecimal naqd, BigDecimal karta) {

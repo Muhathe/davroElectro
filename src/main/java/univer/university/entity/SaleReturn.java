@@ -48,6 +48,9 @@ public class SaleReturn {
     @Column(nullable = false)
     private Long userId;
 
+    @Embedded
+    private FiscalData fiscal;
+
     @Builder.Default
     @OneToMany(mappedBy = "saleReturn", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<SaleReturnItem> items = new ArrayList<>();

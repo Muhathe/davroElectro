@@ -13,7 +13,8 @@ import java.util.List;
 @Entity
 @Table(name = "sales", indexes = {
         @Index(name = "idx_sale_created", columnList = "created_at"),
-        @Index(name = "idx_sale_customer", columnList = "customer_id")
+        @Index(name = "idx_sale_customer", columnList = "customer_id"),
+        @Index(name = "idx_sale_fiscal", columnList = "fiscal_status")
 })
 @Getter
 @Setter
@@ -48,6 +49,23 @@ public class Sale {
 
     @Column(nullable = false, precision = 18, scale = 2)
     private BigDecimal total;
+
+    /** Chegirmagacha summa (eski sotuvlarda bo'sh). */
+    @Column(precision = 18, scale = 2)
+    private BigDecimal subtotal;
+
+    @Column(precision = 18, scale = 2)
+    private BigDecimal discountAmount;
+
+    /** Naqd to'lovda mijoz bergan pul va qaytim. */
+    @Column(precision = 18, scale = 2)
+    private BigDecimal receivedAmount;
+
+    @Column(name = "change_amount", precision = 18, scale = 2)
+    private BigDecimal changeAmount;
+
+    @Embedded
+    private FiscalData fiscal;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 15)

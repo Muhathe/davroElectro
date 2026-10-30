@@ -100,7 +100,7 @@ public class StockService {
             frozen = MoneyUtils.round(p.getQty().subtract(daily.multiply(new BigDecimal("60"))).multiply(p.getAvgCost()));
         }
         return new StockRow(p.getId(), p.getName(), p.getBarcode(), p.getCategory(), p.getUnit(), p.getQty(), p.getMinQty(),
-                p.getAvgCost(), p.getPrice(), value, sold30, daily, cover, status, frozen);
+                p.getAvgCost(), p.getPrice(), value, sold30, daily, cover, status, frozen, ProductImageService.thumbUrl(p));
     }
 
     private Map<Long, BigDecimal> soldLast30() {
