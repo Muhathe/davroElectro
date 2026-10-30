@@ -8,6 +8,10 @@ import org.springframework.web.bind.annotation.*;
 import univer.university.dto.request.ReturnRequests;
 import univer.university.dto.response.ReturnResponses.ReturnDto;
 import univer.university.dto.response.ReturnResponses.SaleForReturn;
+import univer.university.entity.enums.PrintJobType;
+import univer.university.fiscal.FiscalReceipt;
+import univer.university.service.FiscalService;
+import univer.university.service.PrintService;
 import univer.university.service.ReturnService;
 
 import java.util.List;
@@ -18,6 +22,8 @@ import java.util.List;
 public class ReturnController {
 
     private final ReturnService service;
+    private final FiscalService fiscal;
+    private final PrintService print;
 
     @GetMapping("/sales/{checkNo}")
     @PreAuthorize("@perm.view('VOZVRAT')")
@@ -41,6 +47,20 @@ public class ReturnController {
     @ResponseStatus(HttpStatus.CREATED)
     @PreAuthorize("@perm.create('VOZVRAT')")
     public ReturnDto create(@Valid @RequestBody ReturnRequests.Create req) {
-        return service.create(req);
+        ReturnDto ret = service.create(req);
+        // fiskal qaytarish cheki va chop etish commit dan keyin
+        if (fiscal.enabled()) {
+            fiscal.sendAfterCommit(FiscalReceipt.Type.RETURN, ret.id());
+            ret = service.get(ret.id());
+        }
+        print.autoEnqueue(PrintJobType.RETURN, ret.id());
+        return ret;
+    }
+
+    @PostMapping("/{id}/fiscalize")
+    @PreAuthorize("hasAnyRole('EGASI', 'ADMIN')")
+    public ReturnDto fiscalize(@PathVariable Long id) {
+        fiscal.resend(FiscalReceipt.Type.RETURN, id);
+        return service.get(id);
     }
 }

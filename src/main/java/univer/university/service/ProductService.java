@@ -36,7 +36,9 @@ public class ProductService {
 
     public static ProductDto toDto(Product p) {
         return new ProductDto(p.getId(), p.getName(), p.getBarcode(), p.getCategory(), p.getUnit(), p.getAvgCost(),
-                p.getLastCost(), p.getPrice(), p.getQty(), p.getMinQty(), p.getSupplierId(), p.isActive());
+                p.getLastCost(), p.getPrice(), p.getQty(), p.getMinQty(), p.getSupplierId(), p.isActive(),
+                ProductImageService.imageUrl(p), ProductImageService.thumbUrl(p),
+                p.getMxikCode(), p.getPackageCode(), p.getVatPercent());
     }
 
     @Transactional(readOnly = true)
@@ -85,6 +87,7 @@ public class ProductService {
         Product p = products.save(Product.builder().name(req.name().trim()).barcode(req.barcode())
                 .category(blankToNull(req.category())).unit(req.unit()).price(MoneyUtils.round(req.price()))
                 .minQty(QtyUtils.scale(req.minQty())).supplierId(req.supplierId()).active(true).build());
+        applyFiscalCodes(p, req);
         audit.log("CREATE", "Product", p.getId(), p.getName() + " / " + p.getBarcode());
         return toDto(p);
     }
@@ -107,6 +110,7 @@ public class ProductService {
         if (req.active() != null) {
             p.setActive(req.active());
         }
+        applyFiscalCodes(p, req);
         audit.log("UPDATE", "Product", p.getId(), p.getName() + ", narx=" + p.getPrice());
         return toDto(p);
     }
@@ -145,6 +149,18 @@ public class ProductService {
 
     private Product find(Long id) {
         return products.findById(id).orElseThrow(() -> new NotFoundException("Tovar topilmadi"));
+    }
+
+    private static void applyFiscalCodes(Product p, ProductRequests.Save req) {
+        if (req.mxikCode() != null) {
+            p.setMxikCode(blankToNull(req.mxikCode()));
+        }
+        if (req.packageCode() != null) {
+            p.setPackageCode(blankToNull(req.packageCode()));
+        }
+        if (req.vatPercent() != null) {
+            p.setVatPercent(MoneyUtils.round(req.vatPercent()));
+        }
     }
 
     private void checkSupplier(Long id) {

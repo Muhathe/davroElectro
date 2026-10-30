@@ -8,11 +8,17 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.MultipartException;
+import org.springframework.web.multipart.support.MissingServletRequestPartException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 import univer.university.component.DateUtils;
 
 import java.util.stream.Collectors;
@@ -24,6 +30,27 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(NotFoundException.class)
     public ResponseEntity<ErrorResponse> notFound(NotFoundException e, HttpServletRequest req) {
         return build(HttpStatus.NOT_FOUND, e.getMessage(), req);
+    }
+
+    /** Noma'lum manzil — 500 emas, 404. */
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ErrorResponse> noResource(NoResourceFoundException e, HttpServletRequest req) {
+        return build(HttpStatus.NOT_FOUND, "Manzil topilmadi", req);
+    }
+
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ErrorResponse> methodNotAllowed(HttpRequestMethodNotSupportedException e, HttpServletRequest req) {
+        return build(HttpStatus.METHOD_NOT_ALLOWED, e.getMethod() + " metodi bu manzil uchun qo'llab-quvvatlanmaydi", req);
+    }
+
+    @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+    public ResponseEntity<ErrorResponse> mediaType(HttpMediaTypeNotSupportedException e, HttpServletRequest req) {
+        return build(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "So'rov turi qo'llab-quvvatlanmaydi: " + e.getContentType(), req);
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ErrorResponse> tooLarge(MaxUploadSizeExceededException e, HttpServletRequest req) {
+        return build(HttpStatus.PAYLOAD_TOO_LARGE, "Fayl hajmi ruxsat etilganidan katta", req);
     }
 
     @ExceptionHandler(BusinessException.class)
@@ -40,7 +67,8 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler({HttpMessageNotReadableException.class, MethodArgumentTypeMismatchException.class,
-            MissingServletRequestParameterException.class, IllegalArgumentException.class})
+            MissingServletRequestParameterException.class, MissingServletRequestPartException.class,
+            MultipartException.class, IllegalArgumentException.class})
     public ResponseEntity<ErrorResponse> badRequest(Exception e, HttpServletRequest req) {
         return build(HttpStatus.BAD_REQUEST, "Noto'g'ri so'rov: " + e.getMessage(), req);
     }

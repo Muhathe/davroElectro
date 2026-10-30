@@ -20,6 +20,7 @@ public final class ReturnResponses {
     }
 
     public record ReturnDto(Long id, Long saleId, String checkNo, ReturnReason reason, BigDecimal total,
-                            boolean toDebt, LocalDateTime createdAt, List<ReturnableLine> items) {
+                            boolean toDebt, LocalDateTime createdAt, List<ReturnableLine> items,
+                            PosResponses.FiscalInfo fiscal) {
     }
 }
