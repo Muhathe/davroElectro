@@ -18,6 +18,9 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
 
     boolean existsByBarcode(String barcode);
 
+    @Query("select distinct p.category from Product p where p.category is not null order by p.category")
+    List<String> categories();
+
     /** Tovar qatorlarini id tartibida bloklaydi (deadlock bo'lmasligi uchun). */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select p from Product p where p.id in :ids order by p.id")

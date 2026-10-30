@@ -22,6 +22,10 @@ public final class PosResponses {
     public record CashBalance(BigDecimal total, BigDecimal naqd, BigDecimal karta) {
     }
 
+    /** Sahifalangan sotuvlar tarixi; count va total butun filtr bo'yicha. */
+    public record SaleHistory(List<SaleDto> items, long count, BigDecimal total, int page, int size) {
+    }
+
     public record DayCashSummary(java.time.LocalDate date, long checks, BigDecimal total, List<SaleDto> sales) {
     }
 }

@@ -31,6 +31,12 @@ public class ReturnController {
         return service.recent();
     }
 
+    @GetMapping("/{id}")
+    @PreAuthorize("@perm.view('VOZVRAT')")
+    public ReturnDto get(@PathVariable Long id) {
+        return service.get(id);
+    }
+
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     @PreAuthorize("@perm.create('VOZVRAT')")

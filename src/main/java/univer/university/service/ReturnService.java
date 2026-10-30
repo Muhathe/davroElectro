@@ -55,8 +55,9 @@ public class ReturnService {
             wanted.merge(i.productId(), i.qty(), BigDecimal::add);
         }
         Map<Long, SaleItem> soldItems = sale.getItems().stream().collect(Collectors.toMap(SaleItem::getProductId, i -> i));
-        Map<Long, BigDecimal> already = alreadyReturned(sale.getId());
         Map<Long, Product> locked = products.lockAllByIdIn(wanted.keySet()).stream().collect(Collectors.toMap(Product::getId, p -> p));
+        // lock dan keyin o'qiladi: parallel vozvratlar sotilgandan ko'p qaytara olmasligi uchun
+        Map<Long, BigDecimal> already = alreadyReturned(sale.getId());
 
         boolean toDebt = sale.getPaymentType() == PaymentType.NASIYA;
         SaleReturn ret = SaleReturn.builder().saleId(sale.getId()).customerId(sale.getCustomerId()).reason(req.reason())
@@ -113,6 +114,12 @@ public class ReturnService {
             res.add(toDto(r, no));
         }
         return res;
+    }
+
+    @Transactional(readOnly = true)
+    public ReturnDto get(Long id) {
+        SaleReturn r = returns.findById(id).orElseThrow(() -> new NotFoundException("Vozvrat topilmadi"));
+        return toDto(r, sales.findById(r.getSaleId()).map(Sale::getCheckNo).orElse("?"));
     }
 
     private Map<Long, BigDecimal> alreadyReturned(Long saleId) {

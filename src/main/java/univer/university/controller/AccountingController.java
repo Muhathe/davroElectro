@@ -41,6 +41,18 @@ public class AccountingController {
         return service.profitLoss(from, to);
     }
 
+    @GetMapping("/accounts")
+    @PreAuthorize("@perm.view('BUXGALTERIYA')")
+    public List<AccountDto> accounts() {
+        return service.accounts();
+    }
+
+    @GetMapping("/balance-sheet")
+    @PreAuthorize("@perm.view('BUXGALTERIYA')")
+    public BalanceSheet balanceSheet(@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+        return service.balanceSheet(date);
+    }
+
     @GetMapping("/cash-book")
     @PreAuthorize("@perm.view('BUXGALTERIYA')")
     public CashBook cashBook(@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,

@@ -22,7 +22,7 @@ public class Purchase {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false)
+    /** To'liq to'langan kirimda bo'sh bo'lishi mumkin; qarz qolsa StockService majburiy qiladi. */
     private Long supplierId;
 
     @Column(nullable = false, precision = 18, scale = 2)

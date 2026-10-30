@@ -72,9 +72,17 @@ public class DebtService {
         return debtors().stream().map(CustomerDebt::debt).reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
+    @Transactional(readOnly = true)
+    public List<CustomerPaymentDto> payments(Long customerId) {
+        customers.findById(customerId).orElseThrow(() -> new NotFoundException("Mijoz topilmadi"));
+        return payments.findByCustomerIdOrderByCreatedAtDesc(customerId).stream()
+                .map(p -> new CustomerPaymentDto(p.getId(), customerId, p.getAmount(), p.getMethod().name(), p.getCreatedAt(), null))
+                .toList();
+    }
+
     @Transactional
     public CustomerPaymentDto acceptPayment(Long customerId, DebtRequests.Payment req) {
-        customers.findById(customerId).orElseThrow(() -> new NotFoundException("Mijoz topilmadi"));
+        customers.lockById(customerId).orElseThrow(() -> new NotFoundException("Mijoz topilmadi"));
         BigDecimal amount = MoneyUtils.round(req.amount());
         BigDecimal debt = debtOf(customerId);
         if (debt.signum() <= 0) {

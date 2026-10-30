@@ -1,7 +1,12 @@
 package univer.university.service;
 
+import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import univer.university.component.CurrentUserProvider;
@@ -123,6 +128,46 @@ public class PosService {
         List<SaleDto> dtos = toDtos(list);
         BigDecimal total = list.stream().map(Sale::getTotal).reduce(BigDecimal.ZERO, BigDecimal::add);
         return new DayCashSummary(d, list.size(), MoneyUtils.round(total), dtos);
+    }
+
+    @Transactional(readOnly = true)
+    public SaleDto get(Long id) {
+        Sale s = sales.findById(id).orElseThrow(() -> new NotFoundException("Sotuv topilmadi"));
+        return toDtos(List.of(s)).get(0);
+    }
+
+    @Transactional(readOnly = true)
+    public SaleDto getByCheckNo(String checkNo) {
+        Sale s = sales.findByCheckNo(checkNo.trim()).orElseThrow(() -> new NotFoundException("Chek topilmadi: " + checkNo));
+        return toDtos(List.of(s)).get(0);
+    }
+
+    /** Davr bo'yicha sotuvlar tarixi (sotuvchi, mijoz, to'lov turi filtrlari bilan). */
+    @Transactional(readOnly = true)
+    public SaleHistory history(LocalDate from, LocalDate to, Long userId, Long customerId, PaymentType paymentType,
+                               int page, int size) {
+        LocalDate f = from == null ? DateUtils.today().withDayOfMonth(1) : from;
+        LocalDate t = to == null ? DateUtils.today() : to;
+        Specification<Sale> spec = (root, q, cb) -> {
+            List<Predicate> p = new ArrayList<>();
+            p.add(cb.greaterThanOrEqualTo(root.get("createdAt"), DateUtils.startOfDay(f)));
+            p.add(cb.lessThan(root.get("createdAt"), DateUtils.startOfDay(t.plusDays(1))));
+            if (userId != null) {
+                p.add(cb.equal(root.get("userId"), userId));
+            }
+            if (customerId != null) {
+                p.add(cb.equal(root.get("customerId"), customerId));
+            }
+            if (paymentType != null) {
+                p.add(cb.equal(root.get("paymentType"), paymentType));
+            }
+            return cb.and(p.toArray(new Predicate[0]));
+        };
+        BigDecimal total = sales.findAll(spec).stream().map(Sale::getTotal).reduce(BigDecimal.ZERO, BigDecimal::add);
+        int sz = Math.max(1, Math.min(size, 200));
+        Page<Sale> res = sales.findAll(spec, PageRequest.of(Math.max(0, page), sz,
+                Sort.by(Sort.Direction.DESC, "createdAt", "id")));
+        return new SaleHistory(toDtos(res.getContent()), res.getTotalElements(), MoneyUtils.round(total), res.getNumber(), sz);
     }
 
     List<SaleDto> toDtos(List<Sale> list) {

@@ -39,6 +39,7 @@ public class StockService {
     private final SupplierDebtRepository supplierDebts;
     private final StockMovementRepository movements;
     private final SaleItemRepository saleItems;
+    private final UserRepository users;
     private final CashService cash;
     private final AuditService audit;
     private final CurrentUserProvider currentUser;
@@ -211,6 +212,31 @@ public class StockService {
         audit.log("CREATE", "Purchase", saved.getId(), "jami=" + total + ", to'langan=" + paid + ", qarz=" + debt);
         events.publishEvent(new PurchaseCreatedEvent(saved.getId(), total, paid, req.method(), DateUtils.today()));
         return new IncomingResult(saved.getId(), total, paid, debt);
+    }
+
+    @Transactional(readOnly = true)
+    public List<PurchaseDto> purchases(int page, int size) {
+        Page<Purchase> res = purchases.findAllByOrderByCreatedAtDesc(PageRequest.of(Math.max(0, page), Math.max(1, Math.min(size, 200))));
+        return toPurchaseDtos(res.getContent());
+    }
+
+    @Transactional(readOnly = true)
+    public PurchaseDto purchase(Long id) {
+        Purchase p = purchases.findById(id).orElseThrow(() -> new NotFoundException("Kirim topilmadi"));
+        return toPurchaseDtos(List.of(p)).get(0);
+    }
+
+    private List<PurchaseDto> toPurchaseDtos(List<Purchase> list) {
+        Map<Long, String> sup = suppliers.findAll().stream().collect(Collectors.toMap(Supplier::getId, Supplier::getName));
+        Map<Long, String> userNames = users.findAllById(list.stream().map(Purchase::getUserId).filter(Objects::nonNull).distinct().toList())
+                .stream().collect(Collectors.toMap(User::getId, User::getFullName));
+        Map<Long, String> prodNames = products.findAllById(list.stream().flatMap(p -> p.getItems().stream())
+                .map(PurchaseItem::getProductId).distinct().toList()).stream().collect(Collectors.toMap(Product::getId, Product::getName));
+        return list.stream().map(p -> new PurchaseDto(p.getId(), p.getSupplierId(), sup.get(p.getSupplierId()), p.getTotal(),
+                p.getPaid(), MoneyUtils.round(p.getTotal().subtract(p.getPaid())), p.getPayMethod(), p.getCreatedAt(),
+                p.getUserId(), userNames.get(p.getUserId()),
+                p.getItems().stream().map(i -> new PurchaseLine(i.getProductId(), prodNames.get(i.getProductId()), i.getQty(),
+                        i.getCost(), MoneyUtils.round(i.getQty().multiply(i.getCost())))).toList())).toList();
     }
 
     // ---------- tuzatish ----------
