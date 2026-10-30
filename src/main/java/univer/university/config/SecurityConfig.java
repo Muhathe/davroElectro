@@ -41,6 +41,10 @@ public class SecurityConfig {
     private final JwtAuthFilter jwtAuthFilter;
     private final CustomUserDetailsService userDetailsService;
 
+    /** Vergul bilan ajratilgan manzillar (CORS_ORIGINS muhit o'zgaruvchisi). */
+    @Value("${app.cors.allowed-origins}")
+    private List<String> allowedOrigins;
+
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
@@ -102,14 +106,7 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
 
-        config.setAllowedOriginPatterns(List.of(
-                "http://localhost:5173",
-                "http://localhost:3000",
-                "http://5.189.158.5",
-                "https://qdtu.uz",
-                "https://admin.qdtu.uz",
-                "http://localhost:8080"
-        ));
+        config.setAllowedOriginPatterns(allowedOrigins.stream().map(String::trim).toList());
 
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
         config.setAllowedHeaders(List.of("*"));

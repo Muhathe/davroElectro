@@ -37,6 +37,12 @@ public class ProductController {
         return service.list(q, category, onlyActive);
     }
 
+    @GetMapping("/products/categories")
+    @PreAuthorize("@perm.view('SKLAD') or @perm.view('KASSA')")
+    public List<String> categories() {
+        return service.categories();
+    }
+
     @GetMapping("/products/barcode/{code}")
     @PreAuthorize("@perm.view('SKLAD') or @perm.view('KASSA')")
     public ProductDto byBarcode(@PathVariable String code) {
@@ -82,6 +88,12 @@ public class ProductController {
     @PreAuthorize("@perm.view('SKLAD')")
     public List<SupplierDto> suppliers() {
         return service.listSuppliers();
+    }
+
+    @GetMapping("/suppliers/{id}")
+    @PreAuthorize("@perm.view('SKLAD')")
+    public SupplierDto supplier(@PathVariable Long id) {
+        return service.getSupplier(id);
     }
 
     @PostMapping("/suppliers")

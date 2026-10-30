@@ -15,4 +15,8 @@ public final class AuthResponses {
 
     public record LoginResponse(String token, long expiresInMs, UserDto user, List<PermissionRow> permissions) {
     }
+
+    /** Joriy foydalanuvchi va uning ruxsatlari (sahifa yangilanganda frontend uchun). */
+    public record MeResponse(UserDto user, List<PermissionRow> permissions) {
+    }
 }

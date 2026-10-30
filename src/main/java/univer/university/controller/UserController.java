@@ -24,6 +24,12 @@ public class UserController {
         return service.list();
     }
 
+    @GetMapping("/{id}")
+    @PreAuthorize("@perm.view('XODIMLAR')")
+    public UserDto get(@PathVariable Long id) {
+        return service.get(id);
+    }
+
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     @PreAuthorize("@perm.create('XODIMLAR')")

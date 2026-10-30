@@ -27,6 +27,12 @@ public class ExpenseController {
         return service.list(month, categoryId, method, userId);
     }
 
+    @GetMapping("/{id}")
+    @PreAuthorize("@perm.view('HARAJATLAR')")
+    public ExpenseDto get(@PathVariable Long id) {
+        return service.get(id);
+    }
+
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     @PreAuthorize("@perm.create('HARAJATLAR')")

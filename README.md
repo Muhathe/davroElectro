@@ -34,8 +34,29 @@ TZ dagi 19.1 va 19.2 ro'yxati to'liq. Qo'shimchalar:
 `GET /api/debts/customers`, `GET/POST/PUT /api/suppliers`, `POST /api/stock/adjust`, `GET /api/returns`,
 `GET /api/finance/plan-fact`, `GET/POST/PUT /api/finance/recurring`, `GET /api/ai/quick-insight`.
 
+Frontend uchun qo'shimcha (TZ da yo'q, lekin to'liq ishlash uchun kerak):
+
+| Metod | Endpoint | Vazifa | Ruxsat |
+|---|---|---|---|
+| GET | `/api/auth/me` | Joriy foydalanuvchi va ruxsatlari | har kim |
+| PUT | `/api/auth/password` | O'z parolini almashtirish (eski parol bilan) | har kim |
+| GET | `/api/users/{id}` | Bitta xodim | XODIMLAR ko'rish |
+| GET | `/api/audit-logs?from&to&userId&entity` | Audit jurnali | XODIMLAR ko'rish |
+| PUT | `/api/expense-categories/{id}` | Kategoriya tahriri (harajat bor bo'lsa turi o'zgarmaydi) | HARAJATLAR tahrir |
+| GET | `/api/expenses/{id}` | Bitta harajat | HARAJATLAR ko'rish |
+| GET | `/api/customers/{id}/payments` | Mijoz to'lovlari tarixi | QARZLAR yoki MIJOZLAR ko'rish |
+| GET | `/api/pos/sales/history?from&to&userId&customerId&paymentType&page&size` | Sotuvlar tarixi | KASSA ko'rish |
+| GET | `/api/pos/sales/{id}`, `/api/pos/sales/check/{checkNo}` | Chek (qayta chop etish) | KASSA ko'rish |
+| GET | `/api/returns/{id}` | Bitta vozvrat | VOZVRAT ko'rish |
+| GET | `/api/products/categories` | Tovar kategoriyalari (dropdown) | SKLAD yoki KASSA ko'rish |
+| GET | `/api/suppliers/{id}` | Bitta ta'minotchi | SKLAD ko'rish |
+| GET | `/api/stock/purchases`, `/api/stock/purchases/{id}` | Kirimlar ro'yxati va tafsiloti | SKLAD ko'rish |
+| GET | `/api/accounting/accounts` | Hisob rejasi | BUXGALTERIYA ko'rish |
+| GET | `/api/accounting/balance-sheet?date` | Balans (TZ 13.3) | BUXGALTERIYA ko'rish |
+
 ## Ruxsatlar
-`role_permissions` jadvali + `@PreAuthorize("@perm.view('MODUL')")`. EGASI doim ruxsat etilgan. Matritsa `/api/roles/matrix` orqali o'zgaradi.
+`role_permissions` jadvali + `@PreAuthorize("@perm.view('MODUL')")`. EGASI doim ruxsat etilgan. Matritsa `/api/roles/matrix` orqali o'zgaradi:
+faqat EGASI va ADMIN (TZ 6.3), ADMIN esa o'z rolining qatorlarini o'zgartira olmaydi.
 Qo'shimcha modul `QARZLAR` (mijoz to'lovi / ta'minotchi qarzi) va `KASSA_HARAJAT` qo'shilgan.
 
 ## TZ dan chetga chiqishlar (ongli qarorlar)
@@ -50,5 +71,15 @@ Qo'shimcha modul `QARZLAR` (mijoz to'lovi / ta'minotchi qarzi) va `KASSA_HARAJAT
 9. Excel sklad importi: bitta kirim (Purchase) bo'lib saqlanadi; `paid` (default — to'liq), `method` (default NAQD), `supplierId` query parametrlari.
 10. Pul usuli bo'yicha kassa tekshiruvi: chiqimda o'sha usul (NAQD yoki KARTA/CLICK) qoldig'i yetishi kerak.
 
-## Eslatma
-Bu kod yozilgan muhitda Maven Central'ga kirish yopiq edi, shuning uchun **loyiha u yerda kompilyatsiya qilinmagan va testdan o'tkazilmagan** (faqat sintaksis tekshirilgan). Birinchi `mvn compile` da kichik xatolar chiqishi mumkin.
+## Testlar
+`mvn test` — xotiradagi H2 (PostgreSQL rejimi, `src/test/resources/application-test.properties`), PostgreSQL kerak emas.
+- `EndpointSmokeTest` — har bir GET endpoint EGASI uchun 200, yo'q obyekt 404, AI kalitsiz 503.
+- `SecurityTest` — 401/403, rollar matritsasi, `/me`, parol almashtirish.
+- `BusinessFlowTest` — TZ 23-band: sotuv → sklad/kassa/jurnal, harajat storno → kassa tiklanadi + AuditLog,
+  qisman vozvrat chegarasi, nasiya va to'lov, parallel sotuvda qoldiq manfiy bo'lmasligi; har oqimdan keyin balans muvozanati.
+
+## Mavjud bazani yangilash
+`purchases.supplier_id` endi ixtiyoriy (to'liq to'langan kirimda ta'minotchi shart emas). `ddl-auto=update` NOT NULL cheklovini olib tashlamaydi, shuning uchun eski bazada bir marta bajaring:
+```sql
+ALTER TABLE purchases ALTER COLUMN supplier_id DROP NOT NULL;
+```

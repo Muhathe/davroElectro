@@ -30,4 +30,10 @@ public class ExpenseCategoryController {
     public CategoryDto create(@Valid @RequestBody ExpenseRequests.Category req) {
         return service.createCategory(req);
     }
+
+    @PutMapping("/{id}")
+    @PreAuthorize("@perm.edit('HARAJATLAR')")
+    public CategoryDto update(@PathVariable Long id, @Valid @RequestBody ExpenseRequests.Category req) {
+        return service.updateCategory(id, req);
+    }
 }

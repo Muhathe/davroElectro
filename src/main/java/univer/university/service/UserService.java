@@ -35,6 +35,11 @@ public class UserService {
         return users.findAll().stream().map(UserService::toDto).toList();
     }
 
+    @Transactional(readOnly = true)
+    public UserDto get(Long id) {
+        return toDto(users.findById(id).orElseThrow(() -> new NotFoundException("Xodim topilmadi")));
+    }
+
     @Transactional
     public UserDto create(UserRequests.Create req) {
         guardEgasi(req.role());

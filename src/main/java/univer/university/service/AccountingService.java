@@ -135,6 +135,41 @@ public class AccountingService {
     }
 
     @Transactional(readOnly = true)
+    public List<AccountDto> accounts() {
+        return accounts.findAllByOrderByCodeAsc().stream().map(a -> new AccountDto(a.getCode(), a.getName(), a.getType())).toList();
+    }
+
+    /** Sana oxiridagi balans: aktiv hisoblar debet qoldig'i, passiv va kapital kredit qoldig'i bo'yicha. */
+    @Transactional(readOnly = true)
+    public BalanceSheet balanceSheet(LocalDate date) {
+        LocalDate d = date == null ? DateUtils.today() : date;
+        Map<String, BigDecimal[]> bal = toMap(lines.turnoverBefore(d.plusDays(1)));
+        List<BalanceRow> assets = new ArrayList<>();
+        List<BalanceRow> liabilities = new ArrayList<>();
+        List<BalanceRow> equity = new ArrayList<>();
+        BigDecimal profit = BigDecimal.ZERO;
+        for (Account a : accounts.findAllByOrderByCodeAsc()) {
+            BigDecimal[] v = bal.getOrDefault(a.getCode(), new BigDecimal[]{BigDecimal.ZERO, BigDecimal.ZERO});
+            BigDecimal debitNet = v[0].subtract(v[1]);
+            switch (a.getType()) {
+                case AKTIV -> assets.add(new BalanceRow(a.getCode(), a.getName(), MoneyUtils.round(debitNet)));
+                case PASSIV -> liabilities.add(new BalanceRow(a.getCode(), a.getName(), MoneyUtils.round(debitNet.negate())));
+                case KAPITAL -> equity.add(new BalanceRow(a.getCode(), a.getName(), MoneyUtils.round(debitNet.negate())));
+                case DAROMAD, XARAJAT -> profit = profit.subtract(debitNet);
+            }
+        }
+        equity.add(new BalanceRow(null, "Taqsimlanmagan foyda", MoneyUtils.round(profit)));
+        BigDecimal ta = sum(assets);
+        BigDecimal tl = sum(liabilities);
+        BigDecimal te = sum(equity);
+        return new BalanceSheet(d, assets, ta, liabilities, tl, equity, te, ta.compareTo(tl.add(te)) == 0);
+    }
+
+    private static BigDecimal sum(List<BalanceRow> rows) {
+        return MoneyUtils.round(rows.stream().map(BalanceRow::amount).reduce(BigDecimal.ZERO, BigDecimal::add));
+    }
+
+    @Transactional(readOnly = true)
     public CashBook cashBook(LocalDate from, LocalDate to) {
         LocalDate f = from == null ? DateUtils.today().withDayOfMonth(1) : from;
         LocalDate t = to == null ? DateUtils.today() : to;

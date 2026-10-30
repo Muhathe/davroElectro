@@ -43,6 +43,14 @@ public final class ProductResponses {
                               BigDecimal cost, Long refId, java.time.LocalDateTime createdAt) {
     }
 
+    public record PurchaseLine(Long productId, String name, BigDecimal qty, BigDecimal cost, BigDecimal lineTotal) {
+    }
+
+    public record PurchaseDto(Long id, Long supplierId, String supplierName, BigDecimal total, BigDecimal paid,
+                              BigDecimal debt, univer.university.entity.enums.PayMethod payMethod,
+                              java.time.LocalDateTime createdAt, Long userId, String userName, List<PurchaseLine> items) {
+    }
+
     public record IncomingResult(Long purchaseId, BigDecimal total, BigDecimal paid, BigDecimal debt) {
     }
 }
