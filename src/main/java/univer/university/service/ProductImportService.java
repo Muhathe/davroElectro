@@ -30,7 +30,8 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * Mahsulot importi. Shablon: barcode, nomi, kategoriya, birlik, tannarx, narx, miqdor, minQty, ta'minotchi.
+ * Mahsulot importi. Shablon: barcode, nomi, kategoriya, birlik, tannarx, narx, miqdor, minQty, ta'minotchi,
+ * MXIK, qadoq kodi, QQS % (oxirgi uchtasi ixtiyoriy).
  * To'g'ri qatorlar saqlanadi, xatolilari ro'yxat bilan qaytariladi.
  * Yangi tovarda miqdor &gt; 0 bo'lsa — boshlang'ich qoldiq (OPENING) sifatida yoziladi (egasi kapitali hisobiga).
  * Mavjud tovarda faqat nomi/kategoriya/birlik/narx/minQty/ta'minotchi yangilanadi (qoldiq va tannarx o'zgarmaydi).
@@ -39,7 +40,8 @@ import java.util.Locale;
 @RequiredArgsConstructor
 public class ProductImportService {
 
-    public static final List<String> HEADERS = List.of("barcode", "nomi", "kategoriya", "birlik", "tannarx", "narx", "miqdor", "minQty", "ta'minotchi");
+    public static final List<String> HEADERS = List.of("barcode", "nomi", "kategoriya", "birlik", "tannarx", "narx", "miqdor", "minQty", "ta'minotchi",
+            "MXIK", "qadoq kodi", "QQS %");
 
     private final ExcelReader excel;
     private final BarcodeValidator barcodes;
@@ -51,7 +53,7 @@ public class ProductImportService {
 
     public byte[] template() {
         return excel.template("Mahsulotlar", HEADERS,
-                List.of("4780000000011", "LED lampa 12W", "Lampalar", "dona", "8000", "12000", "50", "10", "Elektro Optom"));
+                List.of("4780000000011", "LED lampa 12W", "Lampalar", "dona", "8000", "12000", "50", "10", "Elektro Optom", "", "", "12"));
     }
 
     @Transactional
@@ -91,6 +93,15 @@ public class ProductImportService {
         if (!sup.isBlank()) {
             supplierId = suppliers.findByName(sup).orElseGet(() -> suppliers.save(Supplier.builder().name(sup).build())).getId();
         }
+        String mxik = r.get("mxik");
+        if (!mxik.isBlank() && !mxik.matches("\\d{17}")) {
+            throw new IllegalArgumentException("MXIK kodi 17 ta raqamdan iborat bo'lishi kerak: " + mxik);
+        }
+        String packageCode = r.get("qadoqkodi");
+        BigDecimal vat = r.get("qqs").isBlank() ? null : number(r.get("qqs"), "QQS");
+        if (vat != null && vat.compareTo(new BigDecimal("100")) > 0) {
+            throw new IllegalArgumentException("QQS 100% dan oshmasligi kerak");
+        }
         Product p = products.findByBarcode(barcode).orElse(null);
         if (p != null) {
             p.setName(name);
@@ -99,6 +110,7 @@ public class ProductImportService {
             p.setPrice(MoneyUtils.round(price));
             p.setMinQty(minQty);
             p.setSupplierId(supplierId);
+            applyFiscal(p, mxik, packageCode, vat);
             return BigDecimal.ZERO;
         }
         if (qty.signum() < 0) {
@@ -110,12 +122,26 @@ public class ProductImportService {
         p = products.save(Product.builder().name(name).barcode(barcode).category(category).unit(unit)
                 .avgCost(MoneyUtils.round(cost)).lastCost(MoneyUtils.round(cost)).price(MoneyUtils.round(price))
                 .qty(qty).minQty(minQty).supplierId(supplierId).active(true).build());
+        applyFiscal(p, mxik, packageCode, vat);
         if (qty.signum() > 0) {
             movements.save(StockMovement.builder().productId(p.getId()).type(MovementType.OPENING).qty(qty)
                     .cost(p.getAvgCost()).createdAt(DateUtils.now()).build());
             return MoneyUtils.round(qty.multiply(p.getAvgCost()));
         }
         return BigDecimal.ZERO;
+    }
+
+    /** Bo'sh katak mavjud qiymatni o'zgartirmaydi. */
+    private static void applyFiscal(Product p, String mxik, String packageCode, BigDecimal vat) {
+        if (!mxik.isBlank()) {
+            p.setMxikCode(mxik);
+        }
+        if (!packageCode.isBlank()) {
+            p.setPackageCode(packageCode);
+        }
+        if (vat != null) {
+            p.setVatPercent(MoneyUtils.round(vat));
+        }
     }
 
     static Unit parseUnit(String s) {

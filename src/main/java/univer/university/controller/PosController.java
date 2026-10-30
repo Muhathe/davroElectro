@@ -13,10 +13,15 @@ import univer.university.dto.response.PosResponses.CashBalance;
 import univer.university.dto.response.PosResponses.DayCashSummary;
 import univer.university.dto.response.PosResponses.SaleDto;
 import univer.university.dto.response.PosResponses.SaleHistory;
+import univer.university.entity.enums.FiscalStatus;
 import univer.university.entity.enums.PaymentType;
+import univer.university.entity.enums.PrintJobType;
+import univer.university.fiscal.FiscalReceipt;
 import univer.university.service.CashService;
 import univer.university.service.ExpenseService;
+import univer.university.service.FiscalService;
 import univer.university.service.PosService;
+import univer.university.service.PrintService;
 
 import java.time.LocalDate;
 
@@ -28,12 +33,21 @@ public class PosController {
     private final PosService pos;
     private final ExpenseService expenses;
     private final CashService cash;
+    private final FiscalService fiscal;
+    private final PrintService print;
 
     @PostMapping("/checkout")
     @ResponseStatus(HttpStatus.CREATED)
     @PreAuthorize("@perm.create('KASSA')")
     public SaleDto checkout(@Valid @RequestBody PosRequests.Checkout req) {
-        return pos.checkout(req);
+        SaleDto sale = pos.checkout(req);
+        // sotuv allaqachon commit bo'lgan; fiskal yoki printer xatosi uni bekor qilmaydi
+        if (fiscal.enabled()) {
+            fiscal.sendAfterCommit(FiscalReceipt.Type.SALE, sale.id());
+            sale = pos.get(sale.id());
+        }
+        print.autoEnqueue(PrintJobType.SALE, sale.id());
+        return sale;
     }
 
     /** Kassadan harajat kiritish (ExpenseService.create ni chaqiradi). */
@@ -52,8 +66,9 @@ public class PosController {
 
     @GetMapping("/sales")
     @PreAuthorize("@perm.view('KASSA')")
-    public DayCashSummary sales(@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
-        return pos.salesOfDay(date);
+    public DayCashSummary sales(@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+                                @RequestParam(required = false) FiscalStatus fiscalStatus) {
+        return fiscalStatus != null ? pos.byFiscalStatus(fiscalStatus) : pos.salesOfDay(date);
     }
 
     @GetMapping("/sales/history")
@@ -63,9 +78,18 @@ public class PosController {
                                @RequestParam(required = false) Long userId,
                                @RequestParam(required = false) Long customerId,
                                @RequestParam(required = false) PaymentType paymentType,
+                               @RequestParam(required = false) FiscalStatus fiscalStatus,
                                @RequestParam(defaultValue = "0") int page,
                                @RequestParam(defaultValue = "50") int size) {
-        return pos.history(from, to, userId, customerId, paymentType, page, size);
+        return pos.history(from, to, userId, customerId, paymentType, fiscalStatus, page, size);
+    }
+
+    /** PENDING/FAILED chekni fiskal modulga qayta yuborish. */
+    @PostMapping("/sales/{id}/fiscalize")
+    @PreAuthorize("hasAnyRole('EGASI', 'ADMIN')")
+    public SaleDto fiscalize(@PathVariable Long id) {
+        fiscal.resend(FiscalReceipt.Type.SALE, id);
+        return pos.get(id);
     }
 
     /** Chekni qayta chop etish uchun. */

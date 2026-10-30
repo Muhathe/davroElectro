@@ -11,7 +11,7 @@ class EndpointSmokeTest extends ApiTestSupport {
 
     @ParameterizedTest
     @ValueSource(strings = {
-            "/api/auth/me",
+            "/api/auth/me", "/api/settings/store", "/api/pos/sales?fiscalStatus=PENDING",
             "/api/users", "/api/users/1", "/api/roles/matrix", "/api/audit-logs",
             "/api/expense-categories", "/api/expenses",
             "/api/customers", "/api/customers/1", "/api/customers/1/debt", "/api/customers/1/payments",

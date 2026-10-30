@@ -22,6 +22,10 @@ Swagger: http://localhost:8080/swagger-ui.html  (Authorize tugmasiga login qayta
 | `CORS_ORIGINS` | Frontend manzillari (vergul bilan) | http://localhost:3000 |
 | `SEED_PASSWORD` | Seed foydalanuvchilari paroli | `ChangeMe123!` |
 | `AI_API_KEY`, `AI_MODEL` | AI yordamchi (bo'sh bo'lsa AI o'chiq, 503 qaytadi) | — |
+| `FILES_DIR` | Tovar rasmlari papkasi (doimiy bo'lishi kerak) | `./files` |
+| `FISCAL_ENABLED` | Fiskal chek (provayder ulangandan keyin `true`) | `false` |
+| `PRINT_AGENT_TOKEN` | Kassa print-agenti tokeni (bo'sh bo'lsa agent endpointlari 503) | — |
+| `PRINT_AUTO`, `PRINT_WIDTH`, `PRINT_CUT` | Sotuvdan keyin avtomatik chek; qator kengligi (58 mm = 32, 80 mm = 48); qog'oz kesish | `true`, `32`, `false` |
 
 `application.properties`: `app.seed.enabled`, `app.seed.demo-data` (productionda `false`), `app.seed.opening-cash`, `app.cash.allow-negative`.
 
@@ -54,6 +58,52 @@ Frontend uchun qo'shimcha (TZ da yo'q, lekin to'liq ishlash uchun kerak):
 | GET | `/api/accounting/accounts` | Hisob rejasi | BUXGALTERIYA ko'rish |
 | GET | `/api/accounting/balance-sheet?date` | Balans (TZ 13.3) | BUXGALTERIYA ko'rish |
 
+### Tovar rasmi va chek
+| Metod | Endpoint | Vazifa | Ruxsat |
+|---|---|---|---|
+| POST | `/api/products/{id}/image` (multipart `file`) | JPG/PNG/WEBP, ≤5 MB; 800 px va 200 px JPEG saqlanadi, EXIF olib tashlanadi | SKLAD tahrir |
+| DELETE | `/api/products/{id}/image` | Rasmni o'chirish (204) | SKLAD tahrir |
+| GET | `/files/products/{id}/{xesh}.jpg`, `..._thumb.jpg` | Rasm, **tokensiz**, `Cache-Control: immutable` | ochiq |
+| GET | `/api/settings/store` | Do'kon rekvizitlari (chek uchun) | har kim |
+| PUT | `/api/settings/store` | Rekvizitlarni saqlash | faqat EGASI |
+| POST | `/api/pos/sales/{id}/fiscalize`, `/api/returns/{id}/fiscalize` | PENDING/FAILED chekni qayta yuborish | EGASI, ADMIN |
+| GET | `/api/pos/sales?fiscalStatus=PENDING` | Fiskal navbatdagi cheklar (`/sales/history` da ham filtr bor) | KASSA ko'rish |
+
+`ProductDto`: `imageUrl`, `thumbUrl` (nisbiy yo'l), `mxikCode` (17 raqam), `packageCode`, `vatPercent`; tahrirda bu uchtasi
+yuborilmasa (`null`) o'zgarmaydi, bo'sh satr tozalaydi. `StockRow`: `thumbUrl`. Excel shablonida `MXIK`, `qadoq kodi`, `QQS %` ustunlari.
+`SaleDto`: `subtotal`, `discountAmount`, `receivedAmount`, `change` (faqat naqd), `fiscal` (`FiscalInfo`, fiskal o'chiq bo'lsa yo'q).
+`ReturnDto`: `fiscal`. Noma'lum manzil — 404, noto'g'ri metod — 405, katta fayl — 413.
+
+**Fiskal chek.** Infratuzilma tayyor, provayder ulanmagan. Oqim: sotuv/vozvrat commit bo'ladi → `FiscalProvider.register(...)`.
+Muvaffaqiyat — `SUCCESS`, javob yo'q — `PENDING` (fon navbati har daqiqada qayta yuboradi), `app.fiscal.max-attempts` dan keyin
+yoki qayta yuborib bo'lmaydigan xatoda — `FAILED`. Sotuv hech qachon bekor qilinmaydi. Ulash uchun `fiscal.FiscalProvider` ni
+amalga oshiruvchi `@Component` yozib, `FISCAL_ENABLED=true` qilinadi.
+
+### Chek printeri (print-agent)
+Printer kassa kompyuteriga USB orqali ulangan, server unga ulana olmaydi. Shuning uchun kassada `print-agent/` dagi
+PowerShell agent ishlaydi: `GET /api/print-agent/jobs/next` (long-poll, `X-Agent-Token`) orqali navbatni so'raydi,
+ESC/POS baytlarini Windows printeriga RAW holida yuboradi va `done`/`failed` deb javob beradi. Kiruvchi port yoki router
+sozlamasi kerak emas. Chek matnini server yaratadi (`ReceiptRenderer`): do'kon rekvizitlari, tovarlar, chegirma, qaytim, fiskal QR.
+
+| Metod | Endpoint | Vazifa | Ruxsat |
+|---|---|---|---|
+| — | (avtomatik) | Checkout va vozvratdan keyin chek navbatga qo'yiladi (`PRINT_AUTO`) | — |
+| POST | `/api/pos/sales/{id}/print`, `/api/returns/{id}/print` | Qayta chop etish | KASSA / VOZVRAT ko'rish |
+| POST | `/api/print/test` | Test chek | EGASI, ADMIN |
+| GET | `/api/print/status` | Agent onlaynmi, printer nomi, navbatdagilar soni | har kim |
+| GET | `/api/print/jobs` | Oxirgi 50 vazifa va holati | KASSA ko'rish |
+
+Printer xatosida vazifa 3 martagacha qayta beriladi, keyin `FAILED`. Agent o'chiq paytda yig'ilgan cheklar 15 daqiqadan
+keyin `EXPIRED` bo'ladi (agent yoqilganda eski cheklar birdaniga chiqib ketmaydi). Frontenddagi brauzer orqali chop etishni
+o'chirish kerak, aks holda chek ikki marta chiqadi.
+
+O'rnatish (kassa kompyuterida, Xprinter drayveri o'rnatilgan bo'lishi kerak):
+```powershell
+powershell -ExecutionPolicy Bypass -File print-agent\install.ps1 -Token <PRINT_AGENT_TOKEN>
+```
+Agent `%LOCALAPPDATA%\DavronPrintAgent` ga ko'chiriladi va Windows ga kirganda yashirin ishga tushadi (log: `agent.log`).
+O'chirish: `print-agent\uninstall.ps1`.
+
 ## Ruxsatlar
 `role_permissions` jadvali + `@PreAuthorize("@perm.view('MODUL')")`. EGASI doim ruxsat etilgan. Matritsa `/api/roles/matrix` orqali o'zgaradi:
 faqat EGASI va ADMIN (TZ 6.3), ADMIN esa o'z rolining qatorlarini o'zgartira olmaydi.
@@ -75,6 +125,9 @@ Qo'shimcha modul `QARZLAR` (mijoz to'lovi / ta'minotchi qarzi) va `KASSA_HARAJAT
 `mvn test` — xotiradagi H2 (PostgreSQL rejimi, `src/test/resources/application-test.properties`), PostgreSQL kerak emas.
 - `EndpointSmokeTest` — har bir GET endpoint EGASI uchun 200, yo'q obyekt 404, AI kalitsiz 503.
 - `SecurityTest` — 401/403, rollar matritsasi, `/me`, parol almashtirish.
+- `ReceiptAndImageTest` — rasm yuklash/berish/o'chirish, signatura va hajm tekshiruvi, chek summalari, do'kon rekvizitlari,
+  fiskal PENDING → qayta yuborish → SUCCESS (test provayder bilan), 404/405.
+- `PrintTest` — avtomatik navbat, agent tokeni, ESC/POS chek matni, qayta chop etish, 3 urinishdan keyin FAILED.
 - `BusinessFlowTest` — TZ 23-band: sotuv → sklad/kassa/jurnal, harajat storno → kassa tiklanadi + AuditLog,
   qisman vozvrat chegarasi, nasiya va to'lov, parallel sotuvda qoldiq manfiy bo'lmasligi; har oqimdan keyin balans muvozanati.
 

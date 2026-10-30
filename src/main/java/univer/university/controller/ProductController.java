@@ -14,6 +14,7 @@ import univer.university.dto.request.SupplierRequests;
 import univer.university.dto.response.ProductResponses.ImportResult;
 import univer.university.dto.response.ProductResponses.ProductDto;
 import univer.university.dto.response.ProductResponses.SupplierDto;
+import univer.university.service.ProductImageService;
 import univer.university.service.ProductImportService;
 import univer.university.service.ProductService;
 
@@ -28,6 +29,7 @@ public class ProductController {
 
     private final ProductService service;
     private final ProductImportService importService;
+    private final ProductImageService images;
 
     @GetMapping("/products")
     @PreAuthorize("@perm.view('SKLAD') or @perm.view('KASSA')")
@@ -66,6 +68,20 @@ public class ProductController {
     @PreAuthorize("@perm.edit('SKLAD')")
     public ProductDto update(@PathVariable Long id, @Valid @RequestBody ProductRequests.Save req) {
         return service.update(id, req);
+    }
+
+    /** JPEG/PNG/WEBP, 5 MB gacha; 800 px va 200 px nusxa saqlanadi. */
+    @PostMapping(value = "/products/{id}/image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("@perm.edit('SKLAD')")
+    public ProductDto uploadImage(@PathVariable Long id, @RequestPart("file") MultipartFile file) {
+        return images.upload(id, file);
+    }
+
+    @DeleteMapping("/products/{id}/image")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("@perm.edit('SKLAD')")
+    public void deleteImage(@PathVariable Long id) {
+        images.delete(id);
     }
 
     @GetMapping("/products/import/template")

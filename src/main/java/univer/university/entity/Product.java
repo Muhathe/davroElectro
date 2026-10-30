@@ -57,6 +57,22 @@ public class Product {
 
     private Long supplierId;
 
+    /** Rasm fayli nomi (kontent xeshi); bo'sh bo'lsa rasm yo'q. */
+    @Column(length = 32)
+    private String imageKey;
+
+    /** MXIK (IKPU) kodi — fiskal chek uchun. */
+    @Column(length = 17)
+    private String mxikCode;
+
+    /** O'lchov birligi / qadoq kodi — fiskal chek uchun. */
+    @Column(length = 20)
+    private String packageCode;
+
+    /** QQS stavkasi, %. */
+    @Column(precision = 5, scale = 2)
+    private BigDecimal vatPercent;
+
     @Builder.Default
     @Column(nullable = false)
     private boolean active = true;

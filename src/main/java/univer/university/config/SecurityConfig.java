@@ -70,6 +70,10 @@ public class SecurityConfig {
                                 "/api/auth/login", "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html"
                         ).permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                        // tovar rasmlari: <img src> token yubora olmaydi
+                        .requestMatchers(HttpMethod.GET, "/files/**").permitAll()
+                        // kassa print-agenti o'z tokeni bilan (PrintService tekshiradi)
+                        .requestMatchers("/api/print-agent/**").permitAll()
                         .requestMatchers("/api/public/**").permitAll() // agar ochiq API’lar bo‘lsa
                         .anyRequest().authenticated()
                 )

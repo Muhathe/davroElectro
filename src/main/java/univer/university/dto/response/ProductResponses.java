@@ -12,7 +12,8 @@ public final class ProductResponses {
 
     public record ProductDto(Long id, String name, String barcode, String category, Unit unit, BigDecimal avgCost,
                              BigDecimal lastCost, BigDecimal price, BigDecimal qty, BigDecimal minQty,
-                             Long supplierId, boolean active) {
+                             Long supplierId, boolean active, String imageUrl, String thumbUrl,
+                             String mxikCode, String packageCode, BigDecimal vatPercent) {
     }
 
     public record SupplierDto(Long id, String name, String phone) {
@@ -27,7 +28,7 @@ public final class ProductResponses {
     public record StockRow(Long id, String name, String barcode, String category, Unit unit, BigDecimal qty,
                            BigDecimal minQty, BigDecimal avgCost, BigDecimal price, BigDecimal value,
                            BigDecimal sold30, BigDecimal dailySales, BigDecimal coverDays, StockStatus status,
-                           BigDecimal frozenValue) {
+                           BigDecimal frozenValue, String thumbUrl) {
     }
 
     public record StockList(List<StockRow> items, BigDecimal totalValue, BigDecimal frozenValue,

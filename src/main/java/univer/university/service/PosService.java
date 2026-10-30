@@ -40,6 +40,7 @@ public class PosService {
     private final DocNumberService numbers;
     private final CurrentUserProvider currentUser;
     private final ApplicationEventPublisher events;
+    private final FiscalService fiscal;
 
     /** Bitta tranzaksiya: lock -> qoldiq tekshiruvi -> chegirma -> sklad -> sotuv -> kassa -> hodisa. */
     @Transactional
@@ -69,6 +70,7 @@ public class PosService {
                 .customerId(customer == null ? null : customer.getId()).paymentType(req.paymentType())
                 .discountPercent(discount).total(BigDecimal.ZERO).status(SaleStatus.COMPLETED).build();
 
+        BigDecimal subtotal = BigDecimal.ZERO;
         BigDecimal total = BigDecimal.ZERO;
         BigDecimal cogs = BigDecimal.ZERO;
         List<Object[]> moves = new ArrayList<>();
@@ -88,6 +90,7 @@ public class PosService {
             // 3) chegirma bilan narx
             BigDecimal price = MoneyUtils.applyDiscount(p.getPrice(), discount);
             BigDecimal line = MoneyUtils.round(price.multiply(qty));
+            subtotal = subtotal.add(MoneyUtils.round(p.getPrice().multiply(qty)));
             total = total.add(line);
             cogs = cogs.add(MoneyUtils.round(p.getAvgCost().multiply(qty)));
             // 4) qoldiqni kamaytirish
@@ -96,12 +99,21 @@ public class PosService {
             moves.add(new Object[]{p.getId(), qty.negate(), p.getAvgCost()});
         }
         total = MoneyUtils.round(total);
+        subtotal = MoneyUtils.round(subtotal);
         sale.setTotal(total);
+        sale.setSubtotal(subtotal);
+        sale.setDiscountAmount(subtotal.subtract(total).max(BigDecimal.ZERO));
 
         if (req.paymentType() == PaymentType.NAQD && req.receivedAmount() != null
                 && req.receivedAmount().compareTo(total) < 0) {
             throw new BusinessException("Qabul qilingan summa chek summasidan kam (" + total.toPlainString() + ")");
         }
+        if (req.paymentType() == PaymentType.NAQD && req.receivedAmount() != null) {
+            sale.setReceivedAmount(MoneyUtils.round(req.receivedAmount()));
+            sale.setChangeAmount(MoneyUtils.round(req.receivedAmount().subtract(total)));
+        }
+        // fiskal chek commit dan keyin yuboriladi (PosController)
+        sale.setFiscal(fiscal.initialData());
 
         // 5) sotuv
         Sale saved = sales.save(sale);
@@ -130,6 +142,15 @@ public class PosService {
         return new DayCashSummary(d, list.size(), MoneyUtils.round(total), dtos);
     }
 
+    /** Fiskal holati bo'yicha nazorat ro'yxati (masalan PENDING), eng eskisi birinchi. */
+    @Transactional(readOnly = true)
+    public DayCashSummary byFiscalStatus(FiscalStatus status) {
+        List<Sale> list = sales.findAll((Specification<Sale>) (root, q, cb) -> cb.equal(root.get("fiscal").get("status"), status),
+                PageRequest.of(0, 500, Sort.by("createdAt", "id"))).getContent();
+        BigDecimal total = list.stream().map(Sale::getTotal).reduce(BigDecimal.ZERO, BigDecimal::add);
+        return new DayCashSummary(null, list.size(), MoneyUtils.round(total), toDtos(list));
+    }
+
     @Transactional(readOnly = true)
     public SaleDto get(Long id) {
         Sale s = sales.findById(id).orElseThrow(() -> new NotFoundException("Sotuv topilmadi"));
@@ -145,7 +166,7 @@ public class PosService {
     /** Davr bo'yicha sotuvlar tarixi (sotuvchi, mijoz, to'lov turi filtrlari bilan). */
     @Transactional(readOnly = true)
     public SaleHistory history(LocalDate from, LocalDate to, Long userId, Long customerId, PaymentType paymentType,
-                               int page, int size) {
+                               FiscalStatus fiscalStatus, int page, int size) {
         LocalDate f = from == null ? DateUtils.today().withDayOfMonth(1) : from;
         LocalDate t = to == null ? DateUtils.today() : to;
         Specification<Sale> spec = (root, q, cb) -> {
@@ -160,6 +181,9 @@ public class PosService {
             }
             if (paymentType != null) {
                 p.add(cb.equal(root.get("paymentType"), paymentType));
+            }
+            if (fiscalStatus != null) {
+                p.add(cb.equal(root.get("fiscal").get("status"), fiscalStatus));
             }
             return cb.and(p.toArray(new Predicate[0]));
         };
@@ -181,9 +205,13 @@ public class PosService {
         for (Sale s : list) {
             List<SaleLine> lines = s.getItems().stream().map(i -> new SaleLine(i.getProductId(), prodNames.get(i.getProductId()),
                     i.getQty(), i.getPrice(), MoneyUtils.round(i.getPrice().multiply(i.getQty())))).toList();
+            // eski sotuvlarda subtotal saqlanmagan
+            BigDecimal subtotal = s.getSubtotal() == null ? s.getTotal() : s.getSubtotal();
+            BigDecimal discountAmount = s.getDiscountAmount() == null ? BigDecimal.ZERO : s.getDiscountAmount();
             res.add(new SaleDto(s.getId(), s.getCheckNo(), s.getCreatedAt(), s.getUserId(), userNames.get(s.getUserId()),
                     s.getCustomerId(), custNames.get(s.getCustomerId()), s.getPaymentType(), s.getDiscountPercent(),
-                    s.getTotal(), s.getStatus(), lines));
+                    subtotal, discountAmount, s.getTotal(), s.getReceivedAmount(), s.getChangeAmount(), s.getStatus(),
+                    FiscalService.toInfo(s.getFiscal()), lines));
         }
         return res;
     }
