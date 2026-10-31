@@ -15,7 +15,7 @@ public final class StockRequests {
     }
 
     public record IncomingItem(@NotNull Long productId, @NotNull @DecimalMin("0.001") BigDecimal qty,
-                               @NotNull @DecimalMin("0") BigDecimal cost) {
+                               @NotNull @DecimalMin(value = "0.01", message = "Kirim narxi 0 dan katta bo'lishi kerak") BigDecimal cost) {
     }
 
     /** paid = to'langan qism; qolgani ta'minotchi qarziga yoziladi (14 kun). */

@@ -27,7 +27,8 @@ public final class PermissionCatalog {
             new Capability(Module.AI, "AI yordamchi", "Tezkor xulosa", "AI bilan suhbat", null, null),
             new Capability(Module.SOZLAMALAR, "Sozlamalar", null, null, "Do'kon sozlamalarini o'zgartirish", null),
             new Capability(Module.PRINTER, "Printer", null, "Kassa qo'shish, test chek", "Kassani tahrirlash, qayta o'rnatish", "Kassani o'chirish"),
-            new Capability(Module.FISKAL, "Fiskal chek", null, null, "Chekni fiskal modulga qayta yuborish", null));
+            new Capability(Module.FISKAL, "Fiskal chek", null, null, "Chekni fiskal modulga qayta yuborish", null),
+            new Capability(Module.SMENA, "Smena", "Smena tarixini ko'rish", "Smenani ochish va yopish", null, null));
 
     private PermissionCatalog() {
     }

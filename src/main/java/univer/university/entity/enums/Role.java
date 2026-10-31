@@ -1,5 +1,5 @@
 package univer.university.entity.enums;
 
 public enum Role {
-    EGASI, ADMIN, BUXGALTER, SOTUVCHI
+    EGASI, ADMIN, BUXGALTER, KASSIR, SOTUVCHI
 }

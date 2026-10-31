@@ -14,6 +14,7 @@ import univer.university.dto.request.SupplierRequests;
 import univer.university.dto.response.ProductResponses.ImportResult;
 import univer.university.dto.response.ProductResponses.ProductDto;
 import univer.university.dto.response.ProductResponses.SupplierDto;
+import univer.university.security.PermissionChecker;
 import univer.university.service.ProductImageService;
 import univer.university.service.ProductImportService;
 import univer.university.service.ProductService;
@@ -30,13 +31,19 @@ public class ProductController {
     private final ProductService service;
     private final ProductImportService importService;
     private final ProductImageService images;
+    private final PermissionChecker perm;
 
+    /**
+     * SKLAD huquqi bor foydalanuvchilarga to'liq ma'lumot (avgCost, lastCost).
+     * Faqat KASSA huquqi bor foydalanuvchilarga (KASSIR, SOTUVCHI) tannarx ko'rinmaydi.
+     */
     @GetMapping("/products")
     @PreAuthorize("@perm.view('SKLAD') or @perm.view('KASSA')")
     public List<ProductDto> list(@RequestParam(required = false) String q,
                                  @RequestParam(required = false) String category,
                                  @RequestParam(defaultValue = "false") boolean onlyActive) {
-        return service.list(q, category, onlyActive);
+        List<ProductDto> dtos = service.list(q, category, onlyActive);
+        return perm.view("SKLAD") ? dtos : hideCosts(dtos);
     }
 
     @GetMapping("/products/categories")
@@ -48,13 +55,25 @@ public class ProductController {
     @GetMapping("/products/barcode/{code}")
     @PreAuthorize("@perm.view('SKLAD') or @perm.view('KASSA')")
     public ProductDto byBarcode(@PathVariable String code) {
-        return service.byBarcode(code);
+        ProductDto dto = service.byBarcode(code);
+        return perm.view("SKLAD") ? dto : hideCost(dto);
     }
 
     @GetMapping("/products/{id}")
     @PreAuthorize("@perm.view('SKLAD') or @perm.view('KASSA')")
     public ProductDto get(@PathVariable Long id) {
-        return service.get(id);
+        ProductDto dto = service.get(id);
+        return perm.view("SKLAD") ? dto : hideCost(dto);
+    }
+
+    private static List<ProductDto> hideCosts(List<ProductDto> dtos) {
+        return dtos.stream().map(ProductController::hideCost).toList();
+    }
+
+    private static ProductDto hideCost(ProductDto d) {
+        return new ProductDto(d.id(), d.name(), d.barcode(), d.category(), d.unit(),
+                null, null, d.price(), d.qty(), d.minQty(), d.supplierId(), d.active(),
+                d.imageUrl(), d.thumbUrl(), d.mxikCode(), d.packageCode(), d.vatPercent());
     }
 
     @PostMapping("/products")
