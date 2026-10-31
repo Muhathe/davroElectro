@@ -9,6 +9,7 @@ import univer.university.component.BarcodeValidator;
 import univer.university.component.DateUtils;
 import univer.university.component.ExcelReader;
 import univer.university.component.ExcelReader.ExcelRow;
+import univer.university.component.ExcelReader.TemplateColumn;
 import univer.university.component.MoneyUtils;
 import univer.university.component.QtyUtils;
 import univer.university.dto.response.ProductResponses.ImportResult;
@@ -26,14 +27,15 @@ import univer.university.repository.SupplierRepository;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 /**
- * Mahsulot importi. Shablon: barcode, nomi, kategoriya, birlik, tannarx, narx, miqdor, minQty, ta'minotchi,
- * MXIK, qadoq kodi, QQS % (oxirgi uchtasi ixtiyoriy).
+ * Mahsulot importi: "Yangi tovar" formasidagi hamma maydon (rasmdan tashqari), qoidalari ham forma bilan bir xil.
  * To'g'ri qatorlar saqlanadi, xatolilari ro'yxat bilan qaytariladi.
- * Yangi tovarda miqdor &gt; 0 bo'lsa — boshlang'ich qoldiq (OPENING) sifatida yoziladi (egasi kapitali hisobiga).
+ * Yangi tovarda miqdor &gt; 0 bo'lsa — boshlang'ich qoldiq (OPENING) sifatida yoziladi (egasi kapitali hisobiga), tannarx shart.
  * Mavjud tovarda faqat nomi/kategoriya/birlik/narx/minQty/ta'minotchi yangilanadi (qoldiq va tannarx o'zgarmaydi);
  * bo'sh qoldirilgan ixtiyoriy katak mavjud qiymatni o'chirmaydi, farqli miqdor ogohlantirish bilan qaytariladi.
  */
@@ -41,8 +43,31 @@ import java.util.Locale;
 @RequiredArgsConstructor
 public class ProductImportService {
 
-    public static final List<String> HEADERS = List.of("barcode", "nomi", "kategoriya", "birlik", "tannarx", "narx", "miqdor", "minQty", "ta'minotchi",
-            "MXIK", "qadoq kodi", "QQS %");
+    public static final List<TemplateColumn> COLUMNS = List.of(
+            new TemplateColumn("barcode *", true, true, List.of(), "8-14 ta raqam. Bazada bor bo'lsa tovar yangilanadi, yo'q bo'lsa yangi tovar yaratiladi", "4780000000011"),
+            new TemplateColumn("nomi *", true, false, List.of(), "Tovar nomi, 255 belgigacha", "LED lampa 12W"),
+            new TemplateColumn("kategoriya", false, false, List.of(), "Masalan: Lampalar, Kabellar", "Lampalar"),
+            new TemplateColumn("birlik", false, false, List.of("dona", "metr"), "dona yoki metr. Bo'sh bo'lsa dona", "dona"),
+            new TemplateColumn("tannarx", false, false, List.of(), "Bir birlik tannarxi, so'm. Miqdor 0 dan katta bo'lsa majburiy", "8000"),
+            new TemplateColumn("narx *", true, false, List.of(), "Sotuv narxi, so'm", "12000"),
+            new TemplateColumn("miqdor", false, false, List.of(), "Hozir do'kondagi qoldiq (boshlang'ich qoldiq). Dona uchun butun son. Bo'sh bo'lsa 0", "50"),
+            new TemplateColumn("minQty", false, false, List.of(), "Minimal qoldiq: shundan kamaysa \"tugayapti\" deb ko'rsatiladi", "10"),
+            new TemplateColumn("ta'minotchi", false, false, List.of(), "Ta'minotchi nomi. Bazada yo'q bo'lsa yaratiladi", "Elektro Optom"),
+            new TemplateColumn("MXIK", false, true, List.of(), "17 ta raqam, fiskal chek uchun", "08544001001000000"),
+            new TemplateColumn("qadoq kodi", false, true, List.of(), "O'lchov/qadoq kodi, 20 belgigacha, fiskal chek uchun", "1500123"),
+            new TemplateColumn("QQS %", false, false, List.of(), "0 dan 100 gacha", "12"));
+
+    private static final List<String> RULES = List.of(
+            "Tovarlarni birinchi varaqqa, 2-qatordan boshlab kiriting. Sariq ustunlar majburiy.",
+            "Bu varaq import qilinmaydi. Birinchi varaqdagi ustun nomlarini o'zgartirmang.",
+            "Xato qatorlar saqlanmaydi, natijada qator raqami bilan ko'rsatiladi: ularni tuzatib, faylni qayta yuklash mumkin.",
+            "Qayta yuklashda bor tovarning qoldig'i va tannarxi o'zgarmaydi, ular faqat kirim yoki tuzatish orqali o'zgaradi.",
+            "Barcode, MXIK va qadoq kodi ustunlari matn formatida: boshqa fayldan nusxalaganda faqat qiymatni qo'ying (Paste Values).",
+            "Tovar rasmi Excel orqali kiritilmaydi, u tovar kartasidan yuklanadi.");
+
+    /** Baza ustunlari sig'imi: precision 18/scale 2 va 12/3. */
+    private static final BigDecimal MAX_MONEY = new BigDecimal("1E16");
+    private static final BigDecimal MAX_QTY = new BigDecimal("1E9");
 
     private final ExcelReader excel;
     private final BarcodeValidator barcodes;
@@ -53,8 +78,7 @@ public class ProductImportService {
     private final ApplicationEventPublisher events;
 
     public byte[] template() {
-        return excel.template("Mahsulotlar", HEADERS,
-                List.of("4780000000011", "LED lampa 12W", "Lampalar", "dona", "8000", "12000", "50", "10", "Elektro Optom", "", "", "12"));
+        return excel.fullTemplate("Mahsulotlar", COLUMNS, RULES);
     }
 
     @Transactional
@@ -62,10 +86,15 @@ public class ProductImportService {
         List<ExcelRow> rows = excel.read(file, "barcode", "nomi", "narx");
         List<RowError> errors = new ArrayList<>();
         List<RowError> warnings = new ArrayList<>();
+        Map<String, Integer> seen = new HashMap<>();
         int ok = 0;
         BigDecimal openingValue = BigDecimal.ZERO;
         for (ExcelRow r : rows) {
             try {
+                Integer first = seen.putIfAbsent(r.get("barcode"), r.number());
+                if (first != null) {
+                    throw new IllegalArgumentException("barcode faylda takrorlangan (" + first + "-qatorda bor): " + r.get("barcode"));
+                }
                 openingValue = openingValue.add(importRow(r, warnings));
                 ok++;
             } catch (RuntimeException e) {
@@ -79,7 +108,11 @@ public class ProductImportService {
         return new ImportResult(rows.size(), ok, errors, warnings);
     }
 
-    /** @return yangi boshlang'ich qoldiq qiymati */
+    /**
+     * Baza xatosi butun tranzaksiyani (boshqa qatorlarni ham) bekor qiladi,
+     * shuning uchun qator saqlashdan oldin to'liq tekshiriladi.
+     * @return yangi boshlang'ich qoldiq qiymati
+     */
     private BigDecimal importRow(ExcelRow r, List<RowError> warnings) {
         String barcode = r.get("barcode");
         barcodes.requireValid(barcode);
@@ -88,27 +121,48 @@ public class ProductImportService {
             throw new IllegalArgumentException("nomi 255 belgidan oshmasligi kerak");
         }
         Unit unit = parseUnit(r.get("birlik"));
-        BigDecimal price = number(r.get("narx"), "narx");
-        BigDecimal cost = r.get("tannarx").isBlank() ? BigDecimal.ZERO : number(r.get("tannarx"), "tannarx");
-        BigDecimal qty = r.get("miqdor").isBlank() ? BigDecimal.ZERO : QtyUtils.scale(number(r.get("miqdor"), "miqdor"));
-        BigDecimal minQty = r.get("minqty").isBlank() ? BigDecimal.ZERO : QtyUtils.scale(number(r.get("minqty"), "minQty"));
+        BigDecimal price = limit(number(r.get("narx"), "narx"), MAX_MONEY, "narx");
+        BigDecimal cost = r.get("tannarx").isBlank() ? BigDecimal.ZERO : limit(number(r.get("tannarx"), "tannarx"), MAX_MONEY, "tannarx");
+        BigDecimal qty = r.get("miqdor").isBlank() ? BigDecimal.ZERO : QtyUtils.scale(limit(number(r.get("miqdor"), "miqdor"), MAX_QTY, "miqdor"));
+        BigDecimal minQty = r.get("minqty").isBlank() ? BigDecimal.ZERO : QtyUtils.scale(limit(number(r.get("minqty"), "minQty"), MAX_QTY, "minQty"));
         String category = r.get("kategoriya").isBlank() ? null : r.get("kategoriya");
+        if (category != null && category.length() > 255) {
+            throw new IllegalArgumentException("kategoriya 255 belgidan oshmasligi kerak");
+        }
         String mxik = r.get("mxik");
+        if (r.isNumeric("mxik")) {
+            // Excel 15 xonadan keyingi raqamlarni nolga aylantiradi, bosh nol ham yo'qoladi
+            throw new IllegalArgumentException("MXIK kodi son katakda buzilgan bo'lishi mumkin: katakni matn formatiga o'tkazib qayta yozing");
+        }
         if (!mxik.isBlank() && !mxik.matches("\\d{17}")) {
             throw new IllegalArgumentException("MXIK kodi 17 ta raqamdan iborat bo'lishi kerak: " + mxik);
         }
         String packageCode = r.get("qadoqkodi");
+        if (packageCode.length() > 20) {
+            throw new IllegalArgumentException("qadoq kodi 20 belgidan oshmasligi kerak");
+        }
         BigDecimal vat = r.get("qqs").isBlank() ? null : number(r.get("qqs"), "QQS");
         if (vat != null && vat.compareTo(new BigDecimal("100")) > 0) {
             throw new IllegalArgumentException("QQS 100% dan oshmasligi kerak");
         }
+        String sup = r.get("taminotchi");
+        if (sup.length() > 255) {
+            throw new IllegalArgumentException("ta'minotchi nomi 255 belgidan oshmasligi kerak");
+        }
+        Product p = products.findByBarcode(barcode).orElse(null);
+        if (p == null) {
+            if (unit == Unit.DONA && qty.stripTrailingZeros().scale() > 0) {
+                throw new IllegalArgumentException("dona uchun miqdor butun bo'lishi kerak");
+            }
+            if (qty.signum() > 0 && MoneyUtils.round(cost).signum() <= 0) {
+                throw new IllegalArgumentException("Tovar bor bo'lsa, tannarxini ham kiriting");
+            }
+        }
         // ta'minotchi faqat qator tekshiruvdan o'tgach yaratiladi
         Long supplierId = null;
-        String sup = r.get("taminotchi");
         if (!sup.isBlank()) {
             supplierId = suppliers.findByName(sup).orElseGet(() -> suppliers.save(Supplier.builder().name(sup).build())).getId();
         }
-        Product p = products.findByBarcode(barcode).orElse(null);
         if (p != null) {
             p.setName(name);
             p.setPrice(MoneyUtils.round(price));
@@ -129,12 +183,6 @@ public class ProductImportService {
                 warnings.add(new RowError(r.number(), "Mavjud tovar miqdori o'zgartirilmadi (" + name + "): kirim yoki tuzatish orqali kiriting"));
             }
             return BigDecimal.ZERO;
-        }
-        if (qty.signum() < 0) {
-            throw new IllegalArgumentException("miqdor manfiy bo'lmasligi kerak");
-        }
-        if (unit == Unit.DONA && qty.stripTrailingZeros().scale() > 0) {
-            throw new IllegalArgumentException("dona uchun miqdor butun bo'lishi kerak");
         }
         p = products.save(Product.builder().name(name).barcode(barcode).category(category).unit(unit)
                 .avgCost(MoneyUtils.round(cost)).lastCost(MoneyUtils.round(cost)).price(MoneyUtils.round(price))
@@ -159,6 +207,13 @@ public class ProductImportService {
         if (vat != null) {
             p.setVatPercent(MoneyUtils.round(vat));
         }
+    }
+
+    private static BigDecimal limit(BigDecimal v, BigDecimal max, String col) {
+        if (v.compareTo(max) >= 0) {
+            throw new IllegalArgumentException(col + " juda katta: " + v.toPlainString());
+        }
+        return v;
     }
 
     static Unit parseUnit(String s) {

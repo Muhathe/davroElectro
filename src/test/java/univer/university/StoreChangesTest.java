@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MvcResult;
 
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.math.BigDecimal;
 import java.util.HashMap;
@@ -18,6 +19,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 
 /** Aralash to'lov, boshlang'ich miqdor, vozvrat qidiruvi, xodim ruxsatlari va Excel importi. */
@@ -324,6 +326,95 @@ class StoreChangesTest extends ApiTestSupport {
         assertThat(res.get("imported").asInt()).isEqualTo(2);
         assertThat(res.get("errors").size()).isEqualTo(1);
         assertThat(productQty(b)).isEqualByComparingTo("4");
+        assertBooksBalanced();
+    }
+
+    private byte[] productTemplate() throws Exception {
+        return mvc.perform(get("/api/products/import/template").header("Authorization", "Bearer " + token("davron")))
+                .andReturn().getResponse().getContentAsByteArray();
+    }
+
+    /** Haqiqiy shablon: foydalanuvchi uni yuklab olib to'ldirgandek. */
+    private byte[] filledTemplate(Consumer<Sheet> fill) throws Exception {
+        try (XSSFWorkbook wb = new XSSFWorkbook(new ByteArrayInputStream(productTemplate())); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            fill.accept(wb.getSheetAt(0));
+            wb.write(out);
+            return out.toByteArray();
+        }
+    }
+
+    private static void fillRow(Sheet s, int index, String... cells) {
+        Row r = s.createRow(index);
+        for (int i = 0; i < cells.length; i++) {
+            if (!cells[i].isEmpty()) {
+                r.createCell(i).setCellValue(cells[i]);
+            }
+        }
+    }
+
+    @Test
+    void excelTemplateHasNoSampleRowAndKeepsCodesAsText() throws Exception {
+        byte[] template = productTemplate();
+        try (XSSFWorkbook wb = new XSSFWorkbook(new ByteArrayInputStream(template))) {
+            Sheet s = wb.getSheetAt(0);
+            assertThat(s.getLastRowNum()).isZero();
+            assertThat(s.getRow(0).getLastCellNum()).isEqualTo((short) 12);
+            assertThat(s.getColumnStyle(0).getDataFormatString()).isEqualTo("@");
+            assertThat(s.getColumnStyle(9).getDataFormatString()).isEqualTo("@");
+            assertThat(s.getColumnStyle(10).getDataFormatString()).isEqualTo("@");
+            assertThat(s.getDataValidations()).hasSize(1);
+            assertThat(wb.getSheetAt(1).getRow(1).getCell(3).getStringCellValue()).isEqualTo("4780000000011");
+        }
+        // shablonni to'ldirmasdan yuklash hech narsa saqlamaydi
+        assertThat(upload("/api/products/import", template).get("total").asInt()).isZero();
+    }
+
+    @Test
+    void excelTemplateCarriesEveryNewProductField() throws Exception {
+        String code = barcode();
+        String supplier = "Shablon ta'minotchi " + code;
+        JsonNode res = upload("/api/products/import", filledTemplate(s -> fillRow(s, 1, code, "To'liq tovar", "Kabellar", "metr", "8000", "12000",
+                "2.5", "10", supplier, "08544001001000000", "1500123", "12")));
+        assertThat(res.get("imported").asInt()).as(res.toString()).isEqualTo(1);
+        JsonNode p = ok("GET", "/api/products/barcode/" + code, "davron", null);
+        assertThat(p.get("name").asText()).isEqualTo("To'liq tovar");
+        assertThat(p.get("category").asText()).isEqualTo("Kabellar");
+        assertThat(p.get("unit").asText()).isEqualTo("METR");
+        assertThat(p.get("avgCost").decimalValue()).isEqualByComparingTo("8000");
+        assertThat(p.get("lastCost").decimalValue()).isEqualByComparingTo("8000");
+        assertThat(p.get("price").decimalValue()).isEqualByComparingTo("12000");
+        assertThat(p.get("qty").decimalValue()).isEqualByComparingTo("2.5");
+        assertThat(p.get("minQty").decimalValue()).isEqualByComparingTo("10");
+        assertThat(p.get("supplierId").asLong()).isPositive();
+        assertThat(p.get("mxikCode").asText()).isEqualTo("08544001001000000");
+        assertThat(p.get("packageCode").asText()).isEqualTo("1500123");
+        assertThat(p.get("vatPercent").decimalValue()).isEqualByComparingTo("12");
+        assertThat(p.get("active").asBoolean()).isTrue();
+        assertBooksBalanced();
+    }
+
+    @Test
+    void excelBadRowsAreReportedAndGoodRowsStillSaved() throws Exception {
+        String good = barcode();
+        String dup = barcode();
+        String noCost = barcode();
+        String longPackage = barcode();
+        String hugePrice = barcode();
+        String numericMxik = barcode();
+        JsonNode res = upload("/api/products/import", filledTemplate(s -> {
+            fillRow(s, 1, good, "Yaxshi tovar", "", "", "1000", "2000", "5");
+            fillRow(s, 2, dup, "Birinchi nom", "", "", "", "2000");
+            fillRow(s, 3, dup, "Boshqa tovar", "", "", "", "3000");
+            fillRow(s, 4, noCost, "Tannarxsiz", "", "", "", "2000", "5");
+            fillRow(s, 5, longPackage, "Uzun kod", "", "", "", "2000", "", "", "", "", "123456789012345678901");
+            fillRow(s, 6, hugePrice, "Katta narx", "", "", "", "99999999999999999999");
+            fillRow(s, 7, numericMxik, "Son MXIK", "", "", "", "2000");
+            s.getRow(7).createCell(9).setCellValue(12345678901234500000d);
+        }));
+        assertThat(res.get("imported").asInt()).as(res.toString()).isEqualTo(2);
+        assertThat(res.get("errors").size()).as(res.toString()).isEqualTo(5);
+        assertThat(ok("GET", "/api/products/barcode/" + dup, "davron", null).get("name").asText()).isEqualTo("Birinchi nom");
+        assertThat(ok("GET", "/api/products/barcode/" + good, "davron", null).get("qty").decimalValue()).isEqualByComparingTo("5");
         assertBooksBalanced();
     }
 
