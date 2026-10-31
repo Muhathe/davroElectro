@@ -74,7 +74,12 @@ Frontend uchun qo'shimcha (TZ da yo'q, lekin to'liq ishlash uchun kerak):
 | GET | `/api/pos/sales?fiscalStatus=PENDING` | Fiskal navbatdagi cheklar (`/sales/history` da ham filtr bor) | KASSA ko'rish |
 
 `ProductDto`: `imageUrl`, `thumbUrl` (nisbiy yo'l), `mxikCode` (17 raqam), `packageCode`, `vatPercent`; tahrirda bu uchtasi
-yuborilmasa (`null`) o'zgarmaydi, bo'sh satr tozalaydi. `StockRow`: `thumbUrl`. Excel shablonida `MXIK`, `qadoq kodi`, `QQS %` ustunlari.
+yuborilmasa (`null`) o'zgarmaydi, bo'sh satr tozalaydi. `StockRow`: `thumbUrl`.
+
+**Excel importi.** Ikkita alohida import bor. `POST /api/products/import` (shablon: `/api/products/import/template`) do'konni ishga tushirishda
+tovarlarni to'liq kiritadi: "Yangi tovar" formasidagi hamma maydon (rasmdan tashqari), qoidalari ham bir xil, `miqdor` boshlang'ich qoldiq bo'ladi
+(Dt 4010 / Kt 8410). Bor barcode qatori tovarni yangilaydi, qoldiq va tannarx o'zgarmaydi. Shablonning birinchi varag'i toza, izoh va namuna
+`Yo'riqnoma` varag'ida. `POST /api/stock/import` esa faqat bor tovarga kirim (`barcode`, `miqdor`, `tannarx`).
 `SaleDto`: `subtotal`, `discountAmount`, `receivedAmount`, `change` (faqat naqd), `fiscal` (`FiscalInfo`, fiskal o'chiq bo'lsa yo'q).
 `ReturnDto`: `fiscal`. Noma'lum manzil — 404, noto'g'ri metod — 405, katta fayl — 413.
 

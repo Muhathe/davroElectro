@@ -18,13 +18,17 @@ mvn test                      # integration tests on in-memory H2 (profile "test
 mvn test -Dtest=BusinessFlowTest#creditSaleAndCustomerPayment   # run a single test
 ```
 
-`application.properties` reads its config from env vars: `DB_URL`, `DB_USER`, `DB_PASSWORD`, `JWT_SECRET` (at least 32 chars), `CORS_ORIGINS`, `SEED_PASSWORD`, `AI_API_KEY`, `AI_MODEL` and `AI_BASE_URL`. If the AI key is empty, AI endpoints return 503. `AiService` speaks the OpenAI-compatible chat API (default: Groq free tier) and answers through read-only tools filtered by the caller's permissions. The defaults in `application.properties` (DB name `davro_electro`, CORS `:5173`) differ from `docker-compose.yml` and the README (`davron_elektro`, `:3000`). Check which one applies before you debug a connection or CORS problem.
+`application.properties` reads its config from env vars: `DB_URL`, `DB_USER`, `DB_PASSWORD`, `JWT_SECRET` (at least 32 chars), `CORS_ORIGINS`, `SEED_PASSWORD`, `AI_API_KEY`, `AI_MODEL`, `AI_BASE_URL`, `FILES_DIR`, `FISCAL_ENABLED` and the `PRINT_*` variables. If the AI key is empty, AI endpoints return 503. `AiService` speaks the OpenAI-compatible chat API (default: Groq free tier) and answers through read-only tools filtered by the caller's permissions.
 
-`spring.jpa.hibernate.ddl-auto=update` manages the schema; there are no migrations. `config/DataSeeder` seeds the role matrix, expense categories, the chart of accounts, users (`davron` EGASI, `admin`, `buxgalter`, `sardor`/`jasur` SOTUVCHI) and, when `app.seed.demo-data=true`, demo products, customers and opening cash.
+The defaults in `application.properties` do not match `docker-compose.yml`: the app defaults to database `postgres` with password `root123`, while compose creates `davron_elektro` with password `postgres` (or `DB_PASSWORD`). Set `DB_URL` and `DB_PASSWORD` when using compose. The README's port (8080) and its `SEED_PASSWORD` and CORS defaults are also out of date; trust `application.properties`.
+
+`spring.jpa.hibernate.ddl-auto=update` manages the schema; there are no migrations. The `prod` profile (`application-prod.properties`) also turns off demo data. `config/DataSeeder` seeds the role matrix, expense categories, the chart of accounts, users (`davron` EGASI, `admin`, `buxgalter`, `sardor`/`jasur` SOTUVCHI) and, when `app.seed.demo-data=true`, demo products, customers and opening cash.
 
 Tests extend `ApiTestSupport` (`@SpringBootTest` + MockMvc, one shared context and H2 database seeded by `DataSeeder` with password `test12345`). Tests share state, so create your own products/customers via `newProduct(...)` instead of relying on seed quantities. `EndpointSmokeTest` lists every GET endpoint; add new ones there.
 
 `ddl-auto=update` never drops a NOT NULL constraint or column. When you relax an entity constraint, also give the manual `ALTER TABLE` for existing databases (see the README). It also never updates the CHECK constraints Hibernate generates for enum columns: a new enum value on a live PostgreSQL database is rejected until the constraint is gone, so add it to `DataSeeder.dropEnumChecks()`.
+
+CI/CD is `.github/workflows/deploy.yml`: `mvn -B package` on PRs and pushes to `master`, then a `master` push uploads the jar and runs `deploy/deploy.sh` on the server (`/opt/back`, systemd service `davron-back`, port 8082), which rolls back to the previous jar if the app does not respond within 180 s. `ci-cd.yml` triggers on `main`, which does not exist here, and `deploy/davron-elektro.service` points at the old `/opt/davron-elektro` path; neither is in use.
 
 ## Architecture
 
