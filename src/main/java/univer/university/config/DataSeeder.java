@@ -96,9 +96,8 @@ public class DataSeeder implements ApplicationRunner {
     private void dropEnumChecks() {
         jdbc.execute("ALTER TABLE sales DROP CONSTRAINT IF EXISTS sales_payment_type_check");
         jdbc.execute("ALTER TABLE role_permissions DROP CONSTRAINT IF EXISTS role_permissions_module_check");
-        // KASSIR yangi rol qiymati — eski CHECK cheklovini olib tashlash
+        jdbc.execute("ALTER TABLE role_permissions DROP CONSTRAINT IF EXISTS role_permissions_role_check");
         jdbc.execute("ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check");
-        // cash_shifts smenasi uchun
         jdbc.execute("ALTER TABLE cash_shifts DROP CONSTRAINT IF EXISTS cash_shifts_status_check");
     }
 
