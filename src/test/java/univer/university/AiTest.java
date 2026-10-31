@@ -22,7 +22,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 /** AI vositalar sikli soxta OpenAI mos server bilan tekshiriladi (haqiqiy provayderga so'rov ketmaydi). */
 class AiTest extends ApiTestSupport {
 
-    private record Reply(int status, String body) {
+    private record Reply(int status, String body, String retryAfter) {
+        Reply(int status, String body) {
+            this(status, body, null);
+        }
     }
 
     @Autowired
@@ -40,6 +43,9 @@ class AiTest extends ApiTestSupport {
             Reply r = replies.isEmpty() ? new Reply(500, "{}") : replies.poll();
             byte[] out = r.body().getBytes(StandardCharsets.UTF_8);
             ex.getResponseHeaders().add("content-type", "application/json");
+            if (r.retryAfter() != null) {
+                ex.getResponseHeaders().add("retry-after", r.retryAfter());
+            }
             ex.sendResponseHeaders(r.status(), out.length);
             ex.getResponseBody().write(out);
             ex.close();
@@ -120,11 +126,66 @@ class AiTest extends ApiTestSupport {
         assertThat(bad.getResponse().getStatus()).isEqualTo(503);
         assertThat(bad.getResponse().getContentAsString()).doesNotContain("bad key");
 
-        replies.add(new Reply(429, "{}"));
+        // kutish muddatga sig'maydi (kunlik limit): darhol aniq xato
+        replies.add(new Reply(429, "{}", "3600"));
         assertThat(call("POST", "/api/ai/chat", "davron", Map.of("message", "salom")).getResponse().getStatus()).isEqualTo(429);
+        assertThat(requests).hasSize(2);
 
-        replies.add(new Reply(200, "{\"choices\":[{\"message\":{\"content\":\"\"}}]}"));
+        String empty = "{\"choices\":[{\"message\":{\"content\":\"\"}}]}";
+        replies.addAll(List.of(new Reply(200, empty), new Reply(200, empty), new Reply(200, empty)));
         assertThat(call("POST", "/api/ai/chat", "davron", Map.of("message", "salom")).getResponse().getStatus()).isEqualTo(502);
+    }
+
+    @Test
+    void rateLimitIsWaitedOutAndRetried() throws Exception {
+        replies.add(new Reply(429, "{}", "1"));
+        replies.add(text("tayyor"));
+        long start = System.nanoTime();
+        assertThat(ok("POST", "/api/ai/chat", "davron", Map.of("message", "salom")).get("answer").asText()).isEqualTo("tayyor");
+        assertThat(requests).hasSize(2);
+        assertThat(System.nanoTime() - start).isGreaterThanOrEqualTo(900_000_000L);
+    }
+
+    @Test
+    void serverErrorIsRetried() throws Exception {
+        replies.add(new Reply(503, "{}"));
+        replies.add(text("tayyor"));
+        assertThat(ok("POST", "/api/ai/chat", "davron", Map.of("message", "salom")).get("answer").asText()).isEqualTo("tayyor");
+    }
+
+    @Test
+    void brokenToolCallAfterDataAnswersFromCollectedData() throws Exception {
+        replies.add(toolCall("kassa_qoldigi", "{}"));
+        replies.add(new Reply(400, "{\"error\":{\"code\":\"tool_use_failed\"}}"));
+        replies.add(text("kassada pul bor"));
+        assertThat(ok("POST", "/api/ai/chat", "davron", Map.of("message", "Kassada qancha?")).get("answer").asText()).isEqualTo("kassada pul bor");
+        assertThat(requests.get(1).has("tool_choice")).isFalse();
+        assertThat(requests.get(2).get("tool_choice").asText()).isEqualTo("none");
+    }
+
+    @Test
+    void lastStepForcesAnAnswerInsteadOfAnotherToolCall() throws Exception {
+        for (int i = 0; i < 5; i++) {
+            replies.add(toolCall("kassa_qoldigi", "{}"));
+        }
+        replies.add(text("yakuniy javob"));
+        assertThat(ok("POST", "/api/ai/chat", "davron", Map.of("message", "Kassada qancha?")).get("answer").asText()).isEqualTo("yakuniy javob");
+        assertThat(requests.get(5).get("tool_choice").asText()).isEqualTo("none");
+    }
+
+    @Test
+    void emptyReplyIsRetried() throws Exception {
+        replies.add(new Reply(200, "{\"choices\":[{\"finish_reason\":\"length\",\"message\":{\"content\":\"\"}}]}"));
+        replies.add(text("tayyor"));
+        assertThat(ok("POST", "/api/ai/chat", "davron", Map.of("message", "salom")).get("answer").asText()).isEqualTo("tayyor");
+    }
+
+    @Test
+    void reasoningIsLimitedForGptOss() throws Exception {
+        replies.add(text("ok"));
+        ok("POST", "/api/ai/chat", "davron", Map.of("message", "salom"));
+        assertThat(requests.get(0).get("reasoning_effort").asText()).isEqualTo("low");
+        assertThat(requests.get(0).get("include_reasoning").asBoolean()).isFalse();
     }
 
     @Test

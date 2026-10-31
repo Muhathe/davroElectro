@@ -92,7 +92,8 @@ Ortgan qoldiq avtomatik nasiya bo'ladi (mijoz shart), yig'indi chekdan oshsa rad
 Aralash chekda vozvrat summasi faqat NAQD dan chiqadi va mijoz qarzini kamaytirmaydi.
 
 **AI.** Model do'kon ma'lumotini faqat o'qiydigan vositalar orqali oladi, vositalar so'rovchi xodim ruxsatiga qarab beriladi.
-`POST /api/ai/chat` `{message, history?: [{role, content}]}` (`history` ≤10 xabar). Xatolar: 503 — kalit yo'q yoki noto'g'ri, 429 — bepul limit tugadi, 502 — xizmat javob bermadi.
+`POST /api/ai/chat` `{message, history?: [{role, content}]}` (`history` ≤10 xabar). Xatolar: 503 — kalit yo'q yoki noto'g'ri, 429 — bepul limit tugadi, 502 — xizmat javob bermadi, 504 — vaqt tugadi.
+Limit (429), 5xx va tarmoq xatosida server o'zi kutib qayta urinadi (`Retry-After` hisobga olinadi), shuning uchun javob bir necha soniya kechikishi mumkin.
 
 **Fiskal chek.** Infratuzilma tayyor, provayder ulanmagan. Oqim: sotuv/vozvrat commit bo'ladi → `FiscalProvider.register(...)`.
 Muvaffaqiyat — `SUCCESS`, javob yo'q — `PENDING` (fon navbati har daqiqada qayta yuboradi), `app.fiscal.max-attempts` dan keyin
