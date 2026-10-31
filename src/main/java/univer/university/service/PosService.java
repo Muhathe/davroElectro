@@ -15,6 +15,7 @@ import univer.university.component.CurrentUserProvider;
 import univer.university.component.DateUtils;
 import univer.university.component.MoneyUtils;
 import univer.university.component.QtyUtils;
+import univer.university.entity.enums.Role;
 import univer.university.dto.request.PosRequests;
 import univer.university.dto.response.PosResponses.*;
 import univer.university.entity.*;
@@ -65,7 +66,16 @@ public class PosService {
                 .collect(Collectors.toMap(Product::getId, p -> p));
         BigDecimal discount = customer == null ? BigDecimal.ZERO : MoneyUtils.nz(customer.getDiscountPercent());
 
-        Sale sale = Sale.builder().checkNo(numbers.nextCheckNo()).createdAt(DateUtils.now()).userId(currentUser.id())
+        // EGASI/ADMIN boshqa sotuvchi nomidan sotuv qilishi mumkin
+        Long effectiveUserId = currentUser.id();
+        if (req.sellerId() != null) {
+            Role callerRole = currentUser.current().role();
+            if (callerRole == Role.EGASI || callerRole == Role.ADMIN) {
+                effectiveUserId = req.sellerId();
+            }
+        }
+
+        Sale sale = Sale.builder().checkNo(numbers.nextCheckNo()).createdAt(DateUtils.now()).userId(effectiveUserId)
                 .customerId(customer == null ? null : customer.getId())
                 .discountPercent(discount).total(BigDecimal.ZERO).status(SaleStatus.COMPLETED).build();
 

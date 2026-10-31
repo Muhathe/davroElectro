@@ -225,7 +225,8 @@ class StoreChangesTest extends ApiTestSupport {
         assertThat(ok("GET", "/api/roles/capabilities", "admin", null).size())
                 .isEqualTo(univer.university.entity.enums.Module.values().length);
         assertThat(ok("GET", "/api/roles/matrix", "davron", null).size())
-                .isEqualTo(univer.university.entity.enums.Module.values().length * 4);
+                .isEqualTo(univer.university.entity.enums.Module.values().length
+                        * univer.university.entity.enums.Role.values().length);
         // avvalgi hasRole/hasAnyRole qoidalari matritsaga o'tgan, xulq o'zgarmagan
         assertThat(call("PUT", "/api/settings/store", "admin", Map.of("name", "X")).getResponse().getStatus()).isEqualTo(403);
         assertThat(call("POST", "/api/print/test", "sardor", null).getResponse().getStatus()).isEqualTo(403);

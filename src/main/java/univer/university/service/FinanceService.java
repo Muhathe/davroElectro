@@ -50,9 +50,21 @@ public class FinanceService {
         BigDecimal draw = MoneyUtils.nz(expenses.sumActiveByType(ExpenseType.OWNER_DRAW, from, to));
         BigDecimal opex = MoneyUtils.nz(expenses.sumActive(from, to)).subtract(draw);
         long count = sales.countInRange(from, to);
+
+        // Yalpi foyda foizi (marja)
+        BigDecimal grossMargin = revenue.signum() > 0
+                ? MoneyUtils.round(gross.multiply(new BigDecimal("100")).divide(revenue, 2, RoundingMode.HALF_UP))
+                : null;
+
+        // Oylik kassa oqimi (barcha to'lov turlari kirim/chiqim)
+        BigDecimal monthlyCashIn = cash.periodIn(from, to);
+        BigDecimal monthlyCashOut = cash.periodOut(from, to);
+
         return new Summary(ym.toString(), MoneyUtils.round(sold), MoneyUtils.round(ret), MoneyUtils.round(revenue),
-                MoneyUtils.round(cogs), MoneyUtils.round(gross), MoneyUtils.round(opex), MoneyUtils.round(gross.subtract(opex)),
-                MoneyUtils.round(draw), cash.balance(), debts.totalCustomerDebt(), debts.totalSupplierDebt(), count,
+                MoneyUtils.round(cogs), MoneyUtils.round(gross), grossMargin,
+                MoneyUtils.round(opex), MoneyUtils.round(gross.subtract(opex)),
+                MoneyUtils.round(draw), cash.balance(), monthlyCashIn, monthlyCashOut,
+                debts.totalCustomerDebt(), debts.totalSupplierDebt(), count,
                 count == 0 ? MoneyUtils.zero() : MoneyUtils.round(sold.divide(BigDecimal.valueOf(count), 2, RoundingMode.HALF_UP)),
                 expenseService.list(ym.toString(), null, null, null).byCategory());
     }

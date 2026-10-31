@@ -15,5 +15,6 @@ public enum Module {
     AI,
     SOZLAMALAR,
     PRINTER,
-    FISKAL
+    FISKAL,
+    SMENA
 }

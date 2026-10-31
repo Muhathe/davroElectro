@@ -5,6 +5,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import univer.university.component.DateUtils;
 import univer.university.component.MoneyUtils;
+import univer.university.dto.response.StaffResponses.MyStat;
 import univer.university.dto.response.StaffResponses.StaffStat;
 import univer.university.entity.User;
 import univer.university.entity.enums.Role;
@@ -46,7 +47,7 @@ public class StaffService {
         List<StaffStat> res = new ArrayList<>();
         for (User u : users.findAll()) {
             BigDecimal[] m = mon.get(u.getId());
-            if (m == null && u.getRole() != Role.SOTUVCHI) {
+            if (m == null && u.getRole() != Role.SOTUVCHI && u.getRole() != Role.KASSIR) {
                 continue;
             }
             BigDecimal revenue = m == null ? BigDecimal.ZERO : m[1];
@@ -60,6 +61,29 @@ public class StaffService {
         }
         res.sort(Comparator.comparing(StaffStat::monthRevenue).reversed());
         return res;
+    }
+
+    /** Sotuvchi/kassir uchun: faqat o'z statistikasi, pul va narx ma'lumotlarsiz. */
+    @Transactional(readOnly = true)
+    public MyStat myStats(Long userId, String month) {
+        YearMonth ym = DateUtils.parseMonth(month);
+        LocalDateTime from = DateUtils.monthStart(ym);
+        LocalDateTime to = DateUtils.monthEnd(ym);
+        User user = users.findById(userId).orElseThrow(() -> new univer.university.exception.NotFoundException("Foydalanuvchi topilmadi"));
+
+        Map<Long, BigDecimal[]> mon = pairs(sales.groupByUser(from, to));
+        Map<Long, BigDecimal[]> ret = pairs(returns.groupByUser(from, to));
+
+        BigDecimal[] m = mon.getOrDefault(userId, new BigDecimal[]{BigDecimal.ZERO, BigDecimal.ZERO});
+        BigDecimal[] r = ret.getOrDefault(userId, new BigDecimal[]{BigDecimal.ZERO, BigDecimal.ZERO});
+        long myChecks = m[0].longValue();
+
+        // Ulush = sonlar bo'yicha (pul emas)
+        long totalChecks = mon.values().stream().mapToLong(v -> v[0].longValue()).sum();
+        BigDecimal share = totalChecks == 0 ? BigDecimal.ZERO
+                : MoneyUtils.round(BigDecimal.valueOf(myChecks).divide(BigDecimal.valueOf(totalChecks), 4, RoundingMode.HALF_UP));
+
+        return new MyStat(user.getId(), user.getFullName(), user.getRole(), myChecks, r[0].longValue(), share);
     }
 
     private static Map<Long, BigDecimal[]> pairs(List<Object[]> rows) {

@@ -24,4 +24,14 @@ public interface CashOperationRepository extends JpaRepository<CashOperation, Lo
 
     @Query("select coalesce(sum(c.amount), 0) from CashOperation c where c.direction = :dir and c.method = :method")
     BigDecimal sumByDirectionAndMethod(@Param("dir") CashDirection dir, @Param("method") PayMethod method);
+
+    @Query("select coalesce(sum(c.amount), 0) from CashOperation c "
+            + "where c.direction = :dir and c.createdAt >= :from and c.createdAt < :to")
+    BigDecimal sumByDirectionBetween(@Param("dir") CashDirection dir,
+                                     @Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
+
+    @Query("select coalesce(sum(c.amount), 0) from CashOperation c "
+            + "where c.direction = :dir and c.method = :method and c.createdAt >= :from and c.createdAt < :to")
+    BigDecimal sumByDirectionAndMethodBetween(@Param("dir") CashDirection dir, @Param("method") PayMethod method,
+                                              @Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
 }

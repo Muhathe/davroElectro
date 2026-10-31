@@ -16,6 +16,7 @@ import univer.university.repository.CashOperationRepository;
 import univer.university.repository.DocCounterRepository;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 
 /** CashOperation yagona manba. Kassaga yozish faqat shu servis orqali. */
 @Service
@@ -66,5 +67,36 @@ public class CashService {
         BigDecimal naqd = balance(PayMethod.NAQD);
         BigDecimal karta = balance(PayMethod.KARTA).add(balance(PayMethod.CLICK));
         return new CashBalance(balance(), naqd, karta);
+    }
+
+    /** Davr ichida kassaga tushgan jami pul (barcha to'lov turlari). */
+    @Transactional(readOnly = true)
+    public BigDecimal periodIn(LocalDateTime from, LocalDateTime to) {
+        return MoneyUtils.round(repository.sumByDirectionBetween(CashDirection.IN, from, to));
+    }
+
+    /** Davr ichida kassadan chiqgan jami pul. */
+    @Transactional(readOnly = true)
+    public BigDecimal periodOut(LocalDateTime from, LocalDateTime to) {
+        return MoneyUtils.round(repository.sumByDirectionBetween(CashDirection.OUT, from, to));
+    }
+
+    /** Smena uchun: berilgan vaqtgacha naqd qoldig'i. */
+    @Transactional(readOnly = true)
+    public BigDecimal naqdBalanceAt(LocalDateTime dt) {
+        BigDecimal in = MoneyUtils.round(repository.sumByDirectionBefore(CashDirection.IN, dt));
+        BigDecimal out = MoneyUtils.round(repository.sumByDirectionBefore(CashDirection.OUT, dt));
+        return in.subtract(out);
+    }
+
+    /** Smena davomidagi naqd kirim va chiqim. */
+    @Transactional(readOnly = true)
+    public BigDecimal naqdPeriodIn(LocalDateTime from, LocalDateTime to) {
+        return MoneyUtils.round(repository.sumByDirectionAndMethodBetween(CashDirection.IN, PayMethod.NAQD, from, to));
+    }
+
+    @Transactional(readOnly = true)
+    public BigDecimal naqdPeriodOut(LocalDateTime from, LocalDateTime to) {
+        return MoneyUtils.round(repository.sumByDirectionAndMethodBetween(CashDirection.OUT, PayMethod.NAQD, from, to));
     }
 }

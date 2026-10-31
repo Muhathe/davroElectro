@@ -23,8 +23,21 @@ public final class PosRequests {
     /**
      * Bitta usul: paymentType. Bir nechta usul: payments (paymentType e'tiborsiz qoldiriladi);
      * NAQD/KARTA/CLICK dan ortgan qoldiq avtomatik mijozning nasiyasiga o'tadi. receivedAmount — naqd qismi uchun.
+     * sellerId — EGASI/ADMIN berilgan sotuvchi nomidan sotuv qilganda (ixtiyoriy).
      */
-    public record Checkout(Long customerId, PaymentType paymentType, BigDecimal receivedAmount,
+    public record Checkout(Long customerId, Long sellerId, PaymentType paymentType, BigDecimal receivedAmount,
                            @NotEmpty @Valid List<Item> items, @Valid List<Payment> payments) {
+    }
+
+    /** Smenani ochish: smenani ochishdan oldin sanab topilgan naqd pul. */
+    public record OpenShift(
+            @NotNull @DecimalMin(value = "0", message = "Boshlang'ich naqd manfiy bo'lishi mumkin emas") BigDecimal openingCash,
+            String note) {
+    }
+
+    /** Smenani yopish: yopishdan oldin sanab topilgan naqd pul. */
+    public record CloseShift(
+            @NotNull @DecimalMin(value = "0", message = "Yakuniy naqd manfiy bo'lishi mumkin emas") BigDecimal closingCash,
+            String note) {
     }
 }

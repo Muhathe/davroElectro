@@ -54,7 +54,9 @@ public class DataSeeder implements ApplicationRunner {
     private boolean demo;
     @Value("${app.seed.default-password:ChangeMe123!}")
     private String defaultPassword;
-    @Value("${app.seed.opening-cash:12000000}")
+    /** Boshlang'ich kassa qoldig'i. 0 = demo uchun ham naqd pulni statik qo'shmaydi.
+     *  Kerak bo'lsa application.properties da app.seed.opening-cash=XXXXX qo'ying. */
+    @Value("${app.seed.opening-cash:0}")
     private BigDecimal openingCash;
 
     @Override
@@ -94,31 +96,41 @@ public class DataSeeder implements ApplicationRunner {
     private void dropEnumChecks() {
         jdbc.execute("ALTER TABLE sales DROP CONSTRAINT IF EXISTS sales_payment_type_check");
         jdbc.execute("ALTER TABLE role_permissions DROP CONSTRAINT IF EXISTS role_permissions_module_check");
+        // KASSIR yangi rol qiymati — eski CHECK cheklovini olib tashlash
+        jdbc.execute("ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check");
+        // cash_shifts smenasi uchun
+        jdbc.execute("ALTER TABLE cash_shifts DROP CONSTRAINT IF EXISTS cash_shifts_status_check");
     }
 
-    /** Faqat yetishmagan qatorlar qo'shiladi: ishlab turgan do'kondagi o'zgartirilgan ruxsatlar saqlanadi. */
+    /**
+     * Faqat yetishmagan qatorlar qo'shiladi: ishlab turgan do'kondagi o'zgartirilgan ruxsatlar saqlanadi.
+     * Tartib: EGASI, ADMIN, BUXGALTER, KASSIR, SOTUVCHI; har biri: ko'rish, yaratish, tahrirlash, o'chirish.
+     * KASSIR: kassada sotuv/vozvrat qiladi, tannarx/moliya ko'rmaydi.
+     * SOTUVCHI: KASSIR kabi, lekin mijozlar va smena boshqaruviga qo'shimcha kiradi.
+     */
     private void seedPermissions() {
-        // tartib: EGASI, ADMIN, BUXGALTER, SOTUVCHI; har biri: ko'rish, yaratish, tahrirlash, o'chirish
-        put(Module.KASSA, "TTTT", "TTTT", "TFFF", "TTFF");
-        put(Module.KASSA_HARAJAT, "TTTT", "TTTT", "TTFF", "FFFF");
-        put(Module.VOZVRAT, "TTTT", "TTTT", "TFFF", "TTFF");
-        put(Module.SKLAD, "TTTT", "TTTT", "TFFF", "TFFF");
-        put(Module.MIJOZLAR, "TTTT", "TTTT", "TFFF", "TTFF");
-        put(Module.QARZLAR, "TTTT", "TTTT", "TTFF", "FFFF");
-        put(Module.HARAJATLAR, "TTTT", "TTTT", "TTTT", "FFFF");
-        put(Module.MOLIYA, "TTTT", "TTTT", "TFTF", "FFFF");
-        put(Module.BUXGALTERIYA, "TTTT", "FFFF", "TTFF", "FFFF");
-        put(Module.XODIMLAR, "TTTT", "TTTT", "FFFF", "FFFF");
-        put(Module.AI, "TTTT", "TTTT", "TTFF", "FFFF");
-        put(Module.SOZLAMALAR, "TTTT", "FFFF", "FFFF", "FFFF");
-        put(Module.PRINTER, "TTTT", "TTTT", "FFFF", "FFFF");
-        put(Module.FISKAL, "TTTT", "TTTT", "FFFF", "FFFF");
+        put(Module.KASSA,        "TTTT", "TTTT", "TFFF", "TTFF", "TTFF");
+        put(Module.KASSA_HARAJAT,"TTTT", "TTTT", "TTFF", "TTFF", "FFFF");
+        put(Module.VOZVRAT,      "TTTT", "TTTT", "TFFF", "TTFF", "TTFF");
+        put(Module.SKLAD,        "TTTT", "TTTT", "TFFF", "FFFF", "TFFF");
+        put(Module.MIJOZLAR,     "TTTT", "TTTT", "TFFF", "TFFF", "TTFF");
+        put(Module.QARZLAR,      "TTTT", "TTTT", "TTFF", "FFFF", "FFFF");
+        put(Module.HARAJATLAR,   "TTTT", "TTTT", "TTTT", "FFFF", "FFFF");
+        put(Module.MOLIYA,       "TTTT", "TTTT", "TFTF", "FFFF", "FFFF");
+        put(Module.BUXGALTERIYA, "TTTT", "FFFF", "TTFF", "FFFF", "FFFF");
+        put(Module.XODIMLAR,     "TTTT", "TTTT", "FFFF", "FFFF", "FFFF");
+        put(Module.AI,           "TTTT", "TTTT", "TTFF", "FFFF", "FFFF");
+        put(Module.SOZLAMALAR,   "TTTT", "FFFF", "FFFF", "FFFF", "FFFF");
+        put(Module.PRINTER,      "TTTT", "TTTT", "FFFF", "TFFF", "FFFF");
+        put(Module.FISKAL,       "TTTT", "TTTT", "FFFF", "FFFF", "FFFF");
+        put(Module.SMENA,        "TTTT", "TTTT", "TTFF", "TTFF", "TTFF");
     }
 
-    private void put(Module m, String egasi, String admin, String buxgalter, String sotuvchi) {
+    private void put(Module m, String egasi, String admin, String buxgalter, String kassir, String sotuvchi) {
         save(Role.EGASI, m, egasi);
         save(Role.ADMIN, m, admin);
         save(Role.BUXGALTER, m, buxgalter);
+        save(Role.KASSIR, m, kassir);
         save(Role.SOTUVCHI, m, sotuvchi);
     }
 
@@ -137,6 +149,7 @@ public class DataSeeder implements ApplicationRunner {
         user("davron", "Davron (egasi)", Role.EGASI);
         user("admin", "Administrator", Role.ADMIN);
         user("buxgalter", "Buxgalter", Role.BUXGALTER);
+        user("kassir1", "Kassir (1-kassa)", Role.KASSIR);
         user("sardor", "Sardor (sotuvchi)", Role.SOTUVCHI);
         user("jasur", "Jasur (sotuvchi)", Role.SOTUVCHI);
     }

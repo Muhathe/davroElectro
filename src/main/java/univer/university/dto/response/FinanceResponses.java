@@ -10,9 +10,18 @@ public final class FinanceResponses {
     private FinanceResponses() {
     }
 
+    /**
+     * Oylik moliyaviy xulosasi.
+     * grossMarginPercent — yalpi foyda foizi (grossProfit / revenue * 100); revenue = 0 bo'lsa null.
+     * monthlyCashIn — shu oy kassaga tushgan jami pul (barcha to'lov turlari).
+     * monthlyCashOut — shu oy kassadan chiqgan jami pul.
+     * cashBalance — hozirgi umumiy kassa qoldig'i (barcha vaqt).
+     */
     public record Summary(String month, BigDecimal sales, BigDecimal returns, BigDecimal revenue, BigDecimal cogs,
-                          BigDecimal grossProfit, BigDecimal opex, BigDecimal netProfit, BigDecimal ownerDraw,
-                          BigDecimal cashBalance, BigDecimal customerDebt, BigDecimal supplierDebt,
+                          BigDecimal grossProfit, BigDecimal grossMarginPercent,
+                          BigDecimal opex, BigDecimal netProfit, BigDecimal ownerDraw,
+                          BigDecimal cashBalance, BigDecimal monthlyCashIn, BigDecimal monthlyCashOut,
+                          BigDecimal customerDebt, BigDecimal supplierDebt,
                           long salesCount, BigDecimal averageCheck, List<ExpenseResponses.CategoryTotal> expensesByCategory) {
     }
 
