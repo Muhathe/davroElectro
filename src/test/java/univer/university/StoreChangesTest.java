@@ -334,6 +334,17 @@ class StoreChangesTest extends ApiTestSupport {
                 .andReturn().getResponse().getContentAsByteArray();
     }
 
+    @Test
+    void singleMethodPartialPaymentLeavesRestOnCredit() throws Exception {
+        long id = newProduct("Qisman to'lov", "10000", "5", "6000");
+        long customerId = customer("Qisman mijoz");
+        JsonNode sale = ok("POST", "/api/pos/checkout", "sardor", mixed(id, "1", customerId, List.of(
+                Map.of("method", "KARTA", "amount", 4000))));
+        assertThat(sale.get("paymentType").asText()).isEqualTo("ARALASH");
+        assertThat(sale.get("creditAmount").decimalValue()).isEqualByComparingTo("6000");
+        assertBooksBalanced();
+    }
+
     /** Haqiqiy shablon: foydalanuvchi uni yuklab olib to'ldirgandek. */
     private byte[] filledTemplate(Consumer<Sheet> fill) throws Exception {
         try (XSSFWorkbook wb = new XSSFWorkbook(new ByteArrayInputStream(productTemplate())); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
